@@ -33,27 +33,20 @@
 ## Installation
 
 1. Copy **`import from psd.lua`** to:  
-   `Aseprite ▶ Edit ▶ Preferences ▶ Scripts ▶ Open Folder…`
-2. Restart Aseprite or use **`Scripts ▶ Reload`**
-3. If you see **`File ▶ Scripts ▶ PSD → Aseprite Import…`** in the menu, installation is complete
+   `Aseprite ▶ File ▶ Scripts ▶ Open Scripts Folder`
+2. Restart Aseprite or use **`Scripts ▶ Rescan Scripts Folder`**
+3. If you see **`File ▶ Scripts ▶ import from psd`** in the menu, installation is complete
 
 ---
 
 ## Usage
 
-### 1) GUI Mode
+### GUI Mode
 
-1. Select **Scripts ▶ PSD → Aseprite Import…**
+1. Select **Scripts ▶ import from psd**
 2. Choose your `.psd` file → Click **Import**
 3. The imported sprite will open in a new tab
 
-### 2) CLI / Batch Mode
-
-```bash
-aseprite -b -script "import from psd.lua" --filename="path/to/file.psd"
-```
-
-This is useful for batch converting multiple PSD files in scripts.
 
 ---
 
