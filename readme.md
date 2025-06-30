@@ -79,15 +79,6 @@ This is useful for batch converting multiple PSD files in scripts.
 
 ---
 
-## Roadmap / TODO
-
-- [ ] Import speed optimization using direct `image.bytes` allocation
-- [ ] Multi-frame (animation) support  
-- [ ] Layer mask / adjustment layer parser
-- [ ] 16 bpc PSD beta support
-
----
-
 ## Contributing
 
 Issues and Pull Requests are welcome! 📬
