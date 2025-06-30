@@ -106,5 +106,5 @@ MIT License (see file header) — Feel free to use, modify, and distribute while
 
 - [Aseprite API Documentation](https://github.com/aseprite/api)
 - [Adobe Photoshop File Formats Specification](https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/)
-- [Export as psd.lua](../Export%20as%20psd.lua) (companion export script)
-- [LayerVault: Anatomy of a PSD](https://github.com/layervault/psd.rb/wiki/Anatomy-of-a-PSD)
+- [Export as psd.lua](https://github.com/Tsukina-7mochi/aseprite-scripts/tree/master/psd) (companion export script)
+- [LayerVault: Anatomy of a PSD](https://github.com/layervault/psd.rb)
