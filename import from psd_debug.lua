@@ -852,3 +852,5 @@ else
         io.stderr:write("Usage: aseprite -b -script 'import from psd.lua' --filename=file.psd")
     end
 end
+
+
