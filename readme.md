@@ -82,7 +82,7 @@ Please attach sample PSD files for bug reproduction or Sentry logs when reportin
 
 ## License
 
-MIT License (see file header) — Feel free to use, modify, and distribute while maintaining the license text and copyright notice.
+[MIT License](https://github.com/Tin-01/aseprite-psd-scripts/blob/main/LICENSE) — Feel free to use, modify, and distribute while maintaining the license text and copyright notice.
 
 ---
 
