@@ -212,17 +212,19 @@ end
 ---@param data string
 ---@return string
 local function unpackBits(data)
-    local result = {}
-    local i = 1
+    ---@type string[]
+    local result <const> = {}
+    local lenData <const> = #data
 
-    while i <= #data do
+    local i = 1
+    while i <= lenData do
         local n = string.byte(data, i)
         i = i + 1
 
         if n <= 127 then
             -- Literal run: copy next n+1 bytes
             local count = n + 1
-            if i + count - 1 <= #data then
+            if i + count - 1 <= lenData then
                 result[#result + 1] = data:sub(i, i + count - 1)
                 i = i + count
             else
@@ -230,7 +232,7 @@ local function unpackBits(data)
             end
         elseif n >= 129 then
             -- Replicate run: repeat next byte (257-n) times
-            if i <= #data then
+            if i <= lenData then
                 local byte = data:sub(i, i)
                 local count = 257 - n
                 result[#result + 1] = byte:rep(count)
@@ -249,7 +251,7 @@ end
 -- Blend Mode Mapping
 -- ==============================
 
-local blendModeMap = {
+local blendModeMap <const> = {
     ["norm"] = BlendMode.NORMAL,
     ["mul "] = BlendMode.MULTIPLY,
     ["scrn"] = BlendMode.SCREEN,
@@ -554,12 +556,16 @@ local function importFromPsd(filename)
     -- Create Aseprite Sprite
     -- ==============================
 
-    local sprite = Sprite(width, height, ColorMode.RGB)
+    -- TODO: Use image specification.
+    local sprite <const> = Sprite(width, height, ColorMode.RGB)
+    sprite.filename = app.fs.fileName(filename)
+    -- TODO: Do not do this, a sprite with zero layers will throw an error.
     sprite:deleteLayer(sprite.layers[1]) -- Remove default layer
 
     -- Process layers in reverse order to match PSD layer stack (Top→Bottom becomes Bottom→Top)
     local groupStack = {} ---@type Layer[]
 
+    -- TODO: Use while loop.
     for i = layerCount, 1, -1 do
         local layerInfo = layers[i]
 
@@ -658,12 +664,12 @@ local function importFromPsd(filename)
                         a = string.byte(aData, pixelIndex)
                     end
 
-                    local color = app.pixelColor.rgba(r, g, b, a)
+                    local color <const> = app.pixelColor.rgba(r, g, b, a)
                     image:drawPixel(x, y, color)
                 end
             end
 
-            local cel = sprite:newCel(lay, 1, image, Point(layerInfo.bounds.left, layerInfo.bounds.top))
+            local cel <const> = sprite:newCel(lay, 1, image, Point(layerInfo.bounds.left, layerInfo.bounds.top))
         end
 
         ::nextRecord::
@@ -711,6 +717,26 @@ local function showImportDialog()
         id = "ok",
         text = "&OK",
         focus = false,
+        onclick = function()
+            local filename = dlg.data.filename --[[@as string]]
+            if filename and filename ~= "" then
+                local success, errorMessage = importFromPsd(filename)
+                if success then
+                    app.command.ColorQuantization {
+                        algorithm = 1,
+                        maxColors = 256,
+                        ui = false,
+                        withAlpha = false,
+                    }
+                else
+                    app.alert({
+                        title = "Import Failed",
+                        text = "An error occurred while importing the PSD file:\n" .. (errorMessage or "Unknown error"),
+                        buttons = "OK"
+                    })
+                end
+            end
+        end
     }
 
     dlg:button {
@@ -723,27 +749,6 @@ local function showImportDialog()
         wait = false,
         autoscrollbars = false
     }
-
-    if dlg.data.ok then
-        local filename = dlg.data.filename --[[@as string]]
-        if filename and filename ~= "" then
-            local success, errorMessage = importFromPsd(filename)
-
-            if success then
-                -- app.alert({
-                --     title = "Import Complete",
-                --     text = "PSD file imported successfully!\n" .. filename,
-                --     buttons = "OK"
-                -- })
-            else
-                app.alert({
-                    title = "Import Failed",
-                    text = "An error occurred while importing the PSD file:\n" .. (errorMessage or "Unknown error"),
-                    buttons = "OK"
-                })
-            end
-        end
-    end
 end
 
 local function getOptionsFromCLI()
