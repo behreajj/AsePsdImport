@@ -174,7 +174,7 @@ local function readPascalString(file)
     end
     local padBytes = (4 - ((len + 1) % 4)) % 4
     if padBytes > 0 then
-        file:read(padBytes)
+        _ = file:read(padBytes)
     end
     return str
 end
@@ -294,7 +294,7 @@ local function importFromPsd(filename)
     end
 
     -- Skip reserved bytes
-    file:read(6)
+    _ = file:read(6)
 
     -- Read channels count
     local channels = readU16BE(file)
@@ -328,7 +328,7 @@ local function importFromPsd(filename)
 
     local colorModeDataLength = readU32BE(file)
     if colorModeDataLength > 0 then
-        file:read(colorModeDataLength)
+        _ = file:read(colorModeDataLength)
     end
 
     -- ==============================
@@ -337,7 +337,7 @@ local function importFromPsd(filename)
 
     local imageResourcesLength = readU32BE(file)
     if imageResourcesLength > 0 then
-        file:read(imageResourcesLength)
+        _ = file:read(imageResourcesLength)
     end
 
     -- ==============================
@@ -358,7 +358,7 @@ local function importFromPsd(filename)
     local layers = {} ---@type LayerInfo[]
 
     for i = 1, layerCount do
-        local layer = {} ---@type LayerInfo
+        local layer = {}
 
         -- Read bounds
         layer.bounds = {
@@ -408,13 +408,13 @@ local function importFromPsd(filename)
         -- Skip layer mask (always 0 in our export)
         local maskLength = readU32BE(file)
         if maskLength > 0 then
-            file:read(maskLength)
+            _ = file:read(maskLength)
         end
 
         -- Skip blending ranges (always 0 in our export)
         local blendingRangesLength = readU32BE(file)
         if blendingRangesLength > 0 then
-            file:read(blendingRangesLength)
+            _ = file:read(blendingRangesLength)
         end
 
         -- Read layer name
@@ -440,7 +440,8 @@ local function importFromPsd(filename)
 
             if addSig ~= "8BIM" then -- Unexpected signature
                 file:seek("cur", -8) -- Rewind and skip remaining
-                if remaining > 0 then file:read(remaining) end
+                if remaining > 0 then
+                    _ = file:read(remaining) end
                 break
             end
 
@@ -448,7 +449,7 @@ local function importFromPsd(filename)
                 layer.groupType = readU32BE(file)    -- 0/1/2=opener, 3=closer
                 layer.isGroup = true
                 if padded > 4 then                   -- Skip remaining
-                    file:read(padded - 4)
+                    _ = file:read(padded - 4)
                 end
             elseif addKey == "luni" and addLen >= 4 then -- ★ Unicode layer name found
                 local count = readU32BE(file)            -- UTF-16 code unit count
@@ -457,17 +458,17 @@ local function importFromPsd(filename)
                     local utf16 = file:read(bytesToRead) -- Read UTF-16BE data
                     layer.name = utf16beToUtf8(utf16)    -- Convert to UTF-8
                     if padded > 4 + bytesToRead then     -- Skip remaining padding
-                        file:read(padded - 4 - bytesToRead)
+                        _ = file:read(padded - 4 - bytesToRead)
                     end
                 else
                     -- Invalid data, skip entire block
                     if padded > 4 then
-                        file:read(padded - 4)
+                        _ = file:read(padded - 4)
                     end
                 end
             else
                 -- Uninterested block: skip entire payload
-                if padded > 0 then file:read(padded) end
+                if padded > 0 then _ = file:read(padded) end
             end
         end
 
@@ -701,7 +702,7 @@ local function showImportDialog()
     dialog:show()
 
     if dialog.data.ok then
-        local filename = dialog.data.filename
+        local filename = dialog.data.filename --[[@as string]]
         if filename and filename ~= "" then
             local success, errorMessage = importFromPsd(filename)
 
