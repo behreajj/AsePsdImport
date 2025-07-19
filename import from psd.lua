@@ -708,8 +708,6 @@ local function showImportDialog()
     }:button {
         id = "cancel",
         text = "&Cancel"
-    }:label {
-        text = "PSD → Aseprite Import Tool\n(RGB/RGBA 8bit + Group Structure Support)"
     }
 
     dialog:show()
