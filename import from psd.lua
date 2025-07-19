@@ -4,8 +4,6 @@
 -- Supports both RGB (3 channels) and RGBA (4 channels) PSD files
 -- Fully supports PSD group/folder structures with proper Layer.isGroup mapping
 
-if not app then return end
-
 -- ==============================
 -- UTF-8 Safety Functions
 -- ==============================
