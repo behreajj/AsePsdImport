@@ -693,21 +693,23 @@ if app.apiVersion < 1 then
 end
 
 local function showImportDialog()
-    local dialog = Dialog()
+    local dialog = Dialog {
+        title = "PSD Import"
+    }
     dialog:file {
         id = "filename",
-        label = "PSD File",
-        title = "Select PSD File...",
-        open = true,
+        label = "Open:",
         filetypes = { "psd" },
-        basepath = app.fs.userDocsPath
+        basepath = app.fs.userDocsPath,
+        focus = true,
     }:button {
         id = "ok",
-        text = "&Import",
-        focus = true
+        text = "&OK",
+        focus = false,
     }:button {
         id = "cancel",
-        text = "&Cancel"
+        text = "&Cancel",
+        focus = false,
     }
 
     dialog:show()
