@@ -20,6 +20,7 @@ local function utf16beToUtf8(utf16)
     local lenUtf8 = 0
     local utf8 <const> = {}
     local lenUtf16 <const> = #utf16
+    -- TODO: Use while loop.
     for i = 1, lenUtf16, 2 do
         if i + 1 <= lenUtf16 then
             local code <const> = strunpack(">I2", strsub(utf16, i, i + 1))
@@ -343,10 +344,10 @@ local function importFromPsd(filename)
     end
 
     -- Check color mode
-    local colorMode = readU16BE(file)
-    if colorMode ~= 3 then
+    local psdColorMode <const> = readU16BE(file)
+    if psdColorMode ~= 3 then
         file:close()
-        return false, "Unsupported color mode: " .. colorMode .. " (expected 3 for RGB)"
+        return false, "Unsupported color mode: " .. psdColorMode .. " (expected 3 for RGB)"
     end
 
     -- ==============================
@@ -505,7 +506,7 @@ local function importFromPsd(filename)
 
     -- Read channel image data
     for i = 1, layerCount do
-        local layer = layers[i]
+        local layer <const> = layers[i]
         layer.channelData = {}
 
         -- Create channel data mapping by channel ID
@@ -539,7 +540,7 @@ local function importFromPsd(filename)
                 end
             end
 
-            -- Map channel data by ID: 0=R, 1=G, 2=B, -1=A
+            -- Map channel data by ID: 0 = R, 1 = G, 2 = B, -1 = A
             channelDataByID[channelInfo.id] = decodedData
         end
 
@@ -556,10 +557,22 @@ local function importFromPsd(filename)
     -- Create Aseprite Sprite
     -- ==============================
 
-    -- TODO: Use image specification.
-    local sprite <const> = Sprite(width, height, ColorMode.RGB)
+    local aseColorMode <const> = ColorMode.RGB
+    local aseAlphaIndex <const> = 0
+    local aseColorSpace <const> = ColorSpace { sRGB = true }
+
+    local spriteSpec <const> = ImageSpec {
+        width = width,
+        height = height,
+        colorMode = aseColorMode,
+        transparentColor = aseAlphaIndex,
+    }
+    spriteSpec.colorSpace = aseColorSpace
+    local sprite <const> = Sprite(spriteSpec)
     sprite.filename = app.fs.fileName(filename)
     -- TODO: Do not do this, a sprite with zero layers will throw an error.
+    -- Maybe wait until after all layers are created, then check if #sprite.layers > 1
+    -- before deleting.
     sprite:deleteLayer(sprite.layers[1]) -- Remove default layer
 
     -- Process layers in reverse order to match PSD layer stack (Top→Bottom becomes Bottom→Top)
@@ -607,7 +620,7 @@ local function importFromPsd(filename)
         ------------------------------------------------------------
         -- (2) Regular layer processing (isGroup == false) ---------
         ------------------------------------------------------------
-        local lay = sprite:newLayer()
+        local lay <const> = sprite:newLayer()
         lay.name = safeUtf8(layerInfo.name)
         lay.isVisible = layerInfo.visible
         lay.opacity = layerInfo.opacity
@@ -625,22 +638,30 @@ local function importFromPsd(filename)
         local layerWidth = layerInfo.bounds.right - layerInfo.bounds.left
         local layerHeight = layerInfo.bounds.bottom - layerInfo.bounds.top
 
-        if layerWidth > 0 and layerHeight > 0 and #layerInfo.channelData >= 4 then
-            local image = Image(layerWidth, layerHeight, ColorMode.RGB)
+        if layerWidth > 0
+            and layerHeight > 0
+            and #layerInfo.channelData >= 4 then
+            local imageSpec <const> = ImageSpec {
+                width = layerWidth,
+                height = layerHeight,
+                colorMode = aseColorMode,
+                transparentColor = aseAlphaIndex,
+            }
+            imageSpec.colorSpace = aseColorSpace
+            local image <const> = Image(imageSpec)
 
             -- Decode channel data
-            local rData = layerInfo.channelData[1] or ""
-            local gData = layerInfo.channelData[2] or ""
-            local bData = layerInfo.channelData[3] or ""
+            local rData <const> = layerInfo.channelData[1] or ""
+            local gData <const> = layerInfo.channelData[2] or ""
+            local bData <const> = layerInfo.channelData[3] or ""
             local aData = layerInfo.channelData[4] -- may be nil
 
             -- If no alpha channel, create opaque alpha data
-            local opaque = string.char(255):rep(layerWidth * layerHeight)
+            local expectedSize <const> = layerWidth * layerHeight
+            local opaque <const> = string.rep(string.char(255), expectedSize)
             if not aData or #aData == 0 then
                 aData = opaque
             end
-
-            local expectedSize = layerWidth * layerHeight
 
             for y = 0, layerHeight - 1 do
                 for x = 0, layerWidth - 1 do
@@ -664,11 +685,13 @@ local function importFromPsd(filename)
                         a = string.byte(aData, pixelIndex)
                     end
 
+                    -- TODO: This entire loop could be more efficient.
                     local color <const> = app.pixelColor.rgba(r, g, b, a)
                     image:drawPixel(x, y, color)
                 end
             end
 
+            -- TODO: Images should be trimmed of excess alpha.
             local cel <const> = sprite:newCel(lay, 1, image, Point(layerInfo.bounds.left, layerInfo.bounds.top))
         end
 
