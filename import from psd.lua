@@ -24,13 +24,16 @@ local function utf16beToUtf8(utf16)
                 if code <= 0x7F then
                     utf8[#utf8 + 1] = string.char(code)
                 elseif code <= 0x7FF then
-                    local b1 = 0xC0 + math.floor(code / 64)
-                    local b2 = 0x80 + (code % 64)
+                    -- local b1 = 0xC0 + math.floor(code / 64)
+                    local b1 = 0xC0 + code // 64
+                    local b2 = 0x80 + code % 64
                     utf8[#utf8 + 1] = string.char(b1, b2)
                 elseif code <= 0xFFFF then
-                    local b1 = 0xE0 + math.floor(code / 4096)
-                    local b2 = 0x80 + math.floor((code % 4096) / 64)
-                    local b3 = 0x80 + (code % 64)
+                    -- local b1 = 0xE0 + math.floor(code / 4096)
+                    local b1 = 0xE0 + code // 4096
+                    -- local b2 = 0x80 + math.floor((code % 4096) / 64)
+                    local b2 = 0x80 + (code % 4096) // 64
+                    local b3 = 0x80 + code % 64
                     utf8[#utf8 + 1] = string.char(b1, b2, b3)
                 else
                     utf8[#utf8 + 1] = "?"
@@ -59,11 +62,13 @@ local function safeUtf8(str)
             -- ASCII character (0xxxxxxx)
             result[#result + 1] = string.char(b1)
             i = i + 1
-        elseif b1 >= 0xC2 and b1 <= 0xDF then
+        elseif b1 >= 0xC2
+            and b1 <= 0xDF then
             -- 2-byte sequence (110xxxxx 10xxxxxx)
             if i + 1 <= #str then
                 local b2 = string.byte(str, i + 1)
-                if b2 >= 0x80 and b2 <= 0xBF then
+                if b2 >= 0x80
+                    and b2 <= 0xBF then
                     result[#result + 1] = str:sub(i, i + 1)
                     i = i + 2
                 else
@@ -79,7 +84,10 @@ local function safeUtf8(str)
             if i + 2 <= #str then
                 local b2 = string.byte(str, i + 1)
                 local b3 = string.byte(str, i + 2)
-                if b2 >= 0x80 and b2 <= 0xBF and b3 >= 0x80 and b3 <= 0xBF then
+                if b2 >= 0x80
+                and b2 <= 0xBF
+                and b3 >= 0x80
+                and b3 <= 0xBF then
                     result[#result + 1] = str:sub(i, i + 2)
                     i = i + 3
                 else
@@ -96,7 +104,12 @@ local function safeUtf8(str)
                 local b2 = string.byte(str, i + 1)
                 local b3 = string.byte(str, i + 2)
                 local b4 = string.byte(str, i + 3)
-                if b2 >= 0x80 and b2 <= 0xBF and b3 >= 0x80 and b3 <= 0xBF and b4 >= 0x80 and b4 <= 0xBF then
+                if b2 >= 0x80
+                    and b2 <= 0xBF
+                    and b3 >= 0x80
+                    and b3 <= 0xBF
+                    and b4 >= 0x80
+                    and b4 <= 0xBF then
                     result[#result + 1] = str:sub(i, i + 3)
                     i = i + 4
                 else
