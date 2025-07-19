@@ -693,29 +693,39 @@ if app.apiVersion < 1 then
 end
 
 local function showImportDialog()
-    local dialog = Dialog {
+    local dlg <const> = Dialog {
         title = "PSD Import"
     }
-    dialog:file {
+
+    dlg:file {
         id = "filename",
         label = "Open:",
         filetypes = { "psd" },
         basepath = app.fs.userDocsPath,
         focus = true,
-    }:button {
+    }
+
+    dlg:newrow { wait = false }
+
+    dlg:button {
         id = "ok",
         text = "&OK",
         focus = false,
-    }:button {
+    }
+
+    dlg:button {
         id = "cancel",
         text = "&Cancel",
         focus = false,
     }
 
-    dialog:show()
+    dlg:show {
+        wait = false,
+        autoscrollbars = false
+    }
 
-    if dialog.data.ok then
-        local filename = dialog.data.filename --[[@as string]]
+    if dlg.data.ok then
+        local filename = dlg.data.filename --[[@as string]]
         if filename and filename ~= "" then
             local success, errorMessage = importFromPsd(filename)
 
