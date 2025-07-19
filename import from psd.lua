@@ -12,35 +12,47 @@
 ---@param utf16 string UTF-16BE encoded string
 ---@return string utf8 UTF-8 encoded string
 local function utf16beToUtf8(utf16)
-    local utf8 = {}
-    for i = 1, #utf16, 2 do
-        if i + 1 <= #utf16 then
-            local code = string.unpack(">I2", utf16:sub(i, i + 1))
+    -- Cache global variables to local.
+    local strchar <const> = string.char
+    local strsub <const> = string.sub
+    local strunpack <const> = string.unpack
+
+    local lenUtf8 = 0
+    local utf8 <const> = {}
+    local lenUtf16 <const> = #utf16
+    for i = 1, lenUtf16, 2 do
+        if i + 1 <= lenUtf16 then
+            local code <const> = strunpack(">I2", strsub(utf16, i, i + 1))
             if code >= 0xD800 and code <= 0xDFFF then
                 -- Surrogate pair handling (rare in PSD, skip for now)
-                utf8[#utf8 + 1] = "?"
+                lenUtf8 = lenUtf8 + 1
+                utf8[lenUtf8] = "?"
             else
                 -- Convert Unicode code point to UTF-8
                 if code <= 0x7F then
-                    utf8[#utf8 + 1] = string.char(code)
+                    lenUtf8 = lenUtf8 + 1
+                    utf8[lenUtf8] = strchar(code)
                 elseif code <= 0x7FF then
-                    -- local b1 = 0xC0 + math.floor(code / 64)
-                    local b1 = 0xC0 + code // 64
-                    local b2 = 0x80 + code % 64
-                    utf8[#utf8 + 1] = string.char(b1, b2)
+                    local b1 <const> = 0xC0 + code // 64
+                    local b2 <const> = 0x80 + code % 64
+
+                    lenUtf8 = lenUtf8 + 1
+                    utf8[lenUtf8] = strchar(b1, b2)
                 elseif code <= 0xFFFF then
-                    -- local b1 = 0xE0 + math.floor(code / 4096)
-                    local b1 = 0xE0 + code // 4096
-                    -- local b2 = 0x80 + math.floor((code % 4096) / 64)
-                    local b2 = 0x80 + (code % 4096) // 64
-                    local b3 = 0x80 + code % 64
-                    utf8[#utf8 + 1] = string.char(b1, b2, b3)
+                    local b1 <const> = 0xE0 + code // 4096
+                    local b2 <const> = 0x80 + (code % 4096) // 64
+                    local b3 <const> = 0x80 + code % 64
+
+                    lenUtf8 = lenUtf8 + 1
+                    utf8[lenUtf8] = strchar(b1, b2, b3)
                 else
-                    utf8[#utf8 + 1] = "?"
-                end
-            end
-        end
-    end
+                    lenUtf8 = lenUtf8 + 1
+                    utf8[lenUtf8] = "?"
+                end -- End code inner bit range check.
+            end     -- End Code outer bit range check.
+        end         -- End next index less than length.
+    end             -- End utf16 loop.
+
     return table.concat(utf8)
 end
 
@@ -85,9 +97,9 @@ local function safeUtf8(str)
                 local b2 = string.byte(str, i + 1)
                 local b3 = string.byte(str, i + 2)
                 if b2 >= 0x80
-                and b2 <= 0xBF
-                and b3 >= 0x80
-                and b3 <= 0xBF then
+                    and b2 <= 0xBF
+                    and b3 >= 0x80
+                    and b3 <= 0xBF then
                     result[#result + 1] = str:sub(i, i + 2)
                     i = i + 3
                 else
@@ -444,17 +456,18 @@ local function importFromPsd(filename)
         local processed = curPos - extraStart
         local remaining = extraLength - processed
 
-        while remaining >= 12 do                  -- Continue if header is larger than 12 bytes
-            local addSig = file:read(4)           -- "8BIM"
-            local addKey = file:read(4)           -- "luni" / "lsct" etc.
-            local addLen = readU32BE(file)        -- payload length
-            local padded = addLen + (addLen % 2)  -- 2-byte even padding
+        while remaining >= 12 do                 -- Continue if header is larger than 12 bytes
+            local addSig = file:read(4)          -- "8BIM"
+            local addKey = file:read(4)          -- "luni" / "lsct" etc.
+            local addLen = readU32BE(file)       -- payload length
+            local padded = addLen + (addLen % 2) -- 2-byte even padding
             remaining = remaining - (12 + padded)
 
             if addSig ~= "8BIM" then -- Unexpected signature
                 file:seek("cur", -8) -- Rewind and skip remaining
                 if remaining > 0 then
-                    _ = file:read(remaining) end
+                    _ = file:read(remaining)
+                end
                 break
             end
 
