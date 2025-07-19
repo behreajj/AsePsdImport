@@ -693,19 +693,6 @@ if app.apiVersion < 1 then
 end
 
 local function showImportDialog()
-    -- Get desktop path as default starting location
-    local desktopPath = ""
-
-    -- Try different methods to get desktop path
-    if os.getenv("USERPROFILE") then
-        -- Windows: %USERPROFILE%\Desktop
-        desktopPath = os.getenv("USERPROFILE") .. "\\Desktop"
-    elseif os.getenv("HOME") then
-        -- macOS/Linux: $HOME/Desktop
-        desktopPath = os.getenv("HOME") .. "/Desktop"
-    end
-    -- If path is empty, Aseprite will use its default starting location
-
     local dialog = Dialog()
     dialog:file {
         id = "filename",
@@ -713,7 +700,7 @@ local function showImportDialog()
         title = "Select PSD File...",
         open = true,
         filetypes = { "psd" },
-        filename = desktopPath, -- Start from desktop if available
+        basepath = app.fs.userDocsPath
     }:button {
         id = "ok",
         text = "&Import",
@@ -733,11 +720,11 @@ local function showImportDialog()
             local success, errorMessage = importFromPsd(filename)
 
             if success then
-                app.alert({
-                    title = "Import Complete",
-                    text = "PSD file imported successfully!\n" .. filename,
-                    buttons = "OK"
-                })
+                -- app.alert({
+                --     title = "Import Complete",
+                --     text = "PSD file imported successfully!\n" .. filename,
+                --     buttons = "OK"
+                -- })
             else
                 app.alert({
                     title = "Import Failed",
