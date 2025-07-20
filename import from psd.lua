@@ -883,6 +883,17 @@ local function showImportDialog()
 
     dlg:newrow { wait = false }
 
+    dlg:check {
+        id = "trimImageAlpha",
+        label = "Trim:",
+        text = "Layer Edges",
+        selected = true,
+        hexpand = false,
+        focus = false,
+    }
+
+    dlg:newrow { wait = false }
+
     dlg:button {
         id = "ok",
         text = "&OK",
@@ -890,9 +901,11 @@ local function showImportDialog()
         onclick = function()
             local args <const> = dlg.data
             local filename <const> = args.filename --[[@as string]]
+            local trimImageAlpha <const> = args.trimImageAlpha --[[@as boolean]]
+
             if filename and filename ~= "" then
                 local success <const>,
-                errorMessage <const> = importFromPsd(filename, true)
+                errorMessage <const> = importFromPsd(filename, trimImageAlpha)
                 if success then
                 else
                     app.alert({
