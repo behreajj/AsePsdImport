@@ -20,7 +20,7 @@ local function utf16beToUtf8(utf16)
     local lenUtf8 = 0
     local utf8 <const> = {}
     local lenUtf16 <const> = #utf16
-    -- TODO: Use while loop.
+    -- TODO: Use while loop. Try to remove inner if clause.
     for i = 1, lenUtf16, 2 do
         if i + 1 <= lenUtf16 then
             local code <const> = strunpack(">I2", strsub(utf16, i, i + 1))
@@ -223,20 +223,26 @@ end
 ---@param data string
 ---@return string
 local function unpackBits(data)
+    local strbyte <const> = string.byte
+    local strsub <const> = string.sub
+    local strrep <const> = string.rep
+
     ---@type string[]
     local result <const> = {}
+    local lenResult = 0
     local lenData <const> = #data
 
     local i = 1
     while i <= lenData do
-        local n = string.byte(data, i)
+        local n <const> = strbyte(data, i)
         i = i + 1
 
         if n <= 127 then
             -- Literal run: copy next n+1 bytes
-            local count = n + 1
+            local count <const> = n + 1
             if i + count - 1 <= lenData then
-                result[#result + 1] = data:sub(i, i + count - 1)
+                lenResult = lenResult + 1
+                result[lenResult] = strsub(data, i, i + count - 1)
                 i = i + count
             else
                 break
@@ -244,9 +250,10 @@ local function unpackBits(data)
         elseif n >= 129 then
             -- Replicate run: repeat next byte (257-n) times
             if i <= lenData then
-                local byte = data:sub(i, i)
-                local count = 257 - n
-                result[#result + 1] = byte:rep(count)
+                local byte <const> = strsub(data, i, i)
+                local count <const> = 257 - n
+                lenResult = lenResult + 1
+                result[lenResult] = strrep(byte, count)
                 i = i + 1
             else
                 break
@@ -603,6 +610,7 @@ local function importFromPsd(filename, trimImageAlpha)
         ------------------------------------------------------------
         -- (1) Overall structure for layer/group creation
         ------------------------------------------------------------
+        -- TODO: Is this redundant info? isGroup is the same as groupType == 0|1|2
         if layerInfo.isGroup then
             ----------------------------------------------------------
             -- A. Opener: type 0·1·2  →  Create folder and continue
@@ -632,8 +640,8 @@ local function importFromPsd(filename, trimImageAlpha)
                     tremove(groupStack)
                 end
                 goto nextRecord
-            end
-        end
+            end -- End layer type code.
+        end     -- End layer is group.
 
         ------------------------------------------------------------
         -- (2) Regular layer processing (isGroup == false) ---------
@@ -677,6 +685,11 @@ local function importFromPsd(filename, trimImageAlpha)
             local bData <const> = layerInfo.channelData[3] or ""
             local aData = layerInfo.channelData[4] -- may be nil
 
+            local lenRData <const> = #rData
+            local lenGData <const> = #gData
+            local lenBData <const> = #bData
+            local lenAData <const> = #aData
+
             -- If no alpha channel, create opaque alpha data
             local expectedSize <const> = wLayer * hLayer
             local opaque <const> = strrep(strchar(255), expectedSize)
@@ -686,23 +699,23 @@ local function importFromPsd(filename, trimImageAlpha)
 
             for y = 0, hLayer - 1 do
                 for x = 0, wLayer - 1 do
-                    local pixelIndex = y * wLayer + x + 1
+                    local pixelIndex <const> = y * wLayer + x + 1
 
                     local r = 0
                     local g = 0
                     local b = 0
                     local a = 255
 
-                    if pixelIndex <= #rData then
+                    if pixelIndex <= lenRData then
                         r = strbyte(rData, pixelIndex)
                     end
-                    if pixelIndex <= #gData then
+                    if pixelIndex <= lenGData then
                         g = strbyte(gData, pixelIndex)
                     end
-                    if pixelIndex <= #bData then
+                    if pixelIndex <= lenBData then
                         b = strbyte(bData, pixelIndex)
                     end
-                    if pixelIndex <= #aData then
+                    if pixelIndex <= lenAData then
                         a = strbyte(aData, pixelIndex)
                     end
 
