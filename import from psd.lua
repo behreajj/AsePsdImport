@@ -568,6 +568,14 @@ local function importFromPsd(filename, trimImageAlpha)
     -- Create Aseprite Sprite
     -- ==============================
 
+    -- Cache global methods used in loop to locals.
+    local strbyte <const> = string.byte
+    local rgbaCompose <const> = app.pixelColor.rgba
+    local tinsert <const> = table.insert
+    local tremove <const> = table.remove
+    local strchar <const> = string.char
+    local strrep <const> = string.rep
+
     local aseColorMode <const> = ColorMode.RGB
     local aseAlphaIndex <const> = 0
     local aseColorSpace <const> = ColorSpace { sRGB = true }
@@ -610,8 +618,8 @@ local function importFromPsd(filename, trimImageAlpha)
                 if #groupStack > 0 then
                     grp.parent = groupStack[#groupStack]
                 end
-                grp.stackIndex = 1            -- Move to bottom
-                table.insert(groupStack, grp) -- push
+                grp.stackIndex = 1       -- Move to bottom
+                tinsert(groupStack, grp) -- push
 
                 ------------------------- Important -------------------------
                 goto nextRecord -- Must end here to prevent double creation
@@ -621,7 +629,7 @@ local function importFromPsd(filename, trimImageAlpha)
                 ----------------------------------------------------------
             elseif layerInfo.groupType == 3 then
                 if #groupStack > 0 then
-                    table.remove(groupStack)
+                    tremove(groupStack)
                 end
                 goto nextRecord
             end
@@ -671,7 +679,7 @@ local function importFromPsd(filename, trimImageAlpha)
 
             -- If no alpha channel, create opaque alpha data
             local expectedSize <const> = wLayer * hLayer
-            local opaque <const> = string.rep(string.char(255), expectedSize)
+            local opaque <const> = strrep(strchar(255), expectedSize)
             if not aData or #aData == 0 then
                 aData = opaque
             end
@@ -686,21 +694,21 @@ local function importFromPsd(filename, trimImageAlpha)
                     local a = 255
 
                     if pixelIndex <= #rData then
-                        r = string.byte(rData, pixelIndex)
+                        r = strbyte(rData, pixelIndex)
                     end
                     if pixelIndex <= #gData then
-                        g = string.byte(gData, pixelIndex)
+                        g = strbyte(gData, pixelIndex)
                     end
                     if pixelIndex <= #bData then
-                        b = string.byte(bData, pixelIndex)
+                        b = strbyte(bData, pixelIndex)
                     end
                     if pixelIndex <= #aData then
-                        a = string.byte(aData, pixelIndex)
+                        a = strbyte(aData, pixelIndex)
                     end
 
                     -- TODO: This entire loop could be more efficient.
-                    local color <const> = app.pixelColor.rgba(r, g, b, a)
-                    image:drawPixel(x, y, color)
+                    local abgr32 <const> = rgbaCompose(r, g, b, a)
+                    image:drawPixel(x, y, abgr32)
                 end -- Pixel loop x
             end     -- Pixel loop y
 
@@ -838,8 +846,10 @@ local function getOptionsFromCLI()
     local filename = nil
 
     for key, value in pairs(app.params) do
-        key = key:lower()
-        if key == "filename" or key == "file" or key == "f" then
+        local lcKey <const> = string.lower(key)
+        if lcKey == "filename"
+            or lcKey == "file"
+            or lcKey == "f" then
             filename = value
         end
     end
@@ -850,9 +860,10 @@ end
 if app.isUIAvailable then
     showImportDialog()
 else
-    local filename = getOptionsFromCLI()
+    local filename <const> = getOptionsFromCLI()
     if filename then
-        local success, errorMessage = importFromPsd(filename, true)
+        local success <const>,
+        errorMessage <const> = importFromPsd(filename, true)
         if success then
             print("PSD file imported successfully: " .. filename)
         else
