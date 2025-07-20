@@ -63,26 +63,34 @@ end
 local function safeUtf8(str)
     if not str or str == "" then return "" end
 
+    local strbyte <const> = string.byte
+    -- local strchar <const> = string.char
+    -- local strsub <const> = string.sub
+
     -- Simple UTF-8 validation: check for invalid byte sequences
-    local result = {}
+    -- local result = {}
     local i = 1
     local valid = true
+    local lenStr <const> = #str
+    -- local lenResult = 0
 
-    while i <= #str do
-        local b1 = string.byte(str, i)
+    while i <= lenStr do
+        local b1 <const> = strbyte(str, i)
 
         if b1 <= 0x7F then
             -- ASCII character (0xxxxxxx)
-            result[#result + 1] = string.char(b1)
+            -- lenResult = lenResult + 1
+            -- result[lenResult] = strchar(b1)
             i = i + 1
         elseif b1 >= 0xC2
             and b1 <= 0xDF then
             -- 2-byte sequence (110xxxxx 10xxxxxx)
-            if i + 1 <= #str then
-                local b2 = string.byte(str, i + 1)
+            if i + 1 <= lenStr then
+                local b2 <const> = strbyte(str, i + 1)
                 if b2 >= 0x80
                     and b2 <= 0xBF then
-                    result[#result + 1] = str:sub(i, i + 1)
+                    -- lenResult = lenResult + 1
+                    -- result[lenResult] = strsub(str, i, i + 1)
                     i = i + 2
                 else
                     valid = false
@@ -94,14 +102,15 @@ local function safeUtf8(str)
             end
         elseif b1 >= 0xE0 and b1 <= 0xEF then
             -- 3-byte sequence (1110xxxx 10xxxxxx 10xxxxxx)
-            if i + 2 <= #str then
-                local b2 = string.byte(str, i + 1)
-                local b3 = string.byte(str, i + 2)
+            if i + 2 <= lenStr then
+                local b2 <const> = strbyte(str, i + 1)
+                local b3 <const> = strbyte(str, i + 2)
                 if b2 >= 0x80
                     and b2 <= 0xBF
                     and b3 >= 0x80
                     and b3 <= 0xBF then
-                    result[#result + 1] = str:sub(i, i + 2)
+                    -- lenResult = lenResult + 1
+                    -- result[lenResult] = strsub(str, i, i + 2)
                     i = i + 3
                 else
                     valid = false
@@ -113,17 +122,18 @@ local function safeUtf8(str)
             end
         elseif b1 >= 0xF0 and b1 <= 0xF4 then
             -- 4-byte sequence (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx)
-            if i + 3 <= #str then
-                local b2 = string.byte(str, i + 1)
-                local b3 = string.byte(str, i + 2)
-                local b4 = string.byte(str, i + 3)
+            if i + 3 <= lenStr then
+                local b2 <const> = strbyte(str, i + 1)
+                local b3 <const> = strbyte(str, i + 2)
+                local b4 <const> = strbyte(str, i + 3)
                 if b2 >= 0x80
                     and b2 <= 0xBF
                     and b3 >= 0x80
                     and b3 <= 0xBF
                     and b4 >= 0x80
                     and b4 <= 0xBF then
-                    result[#result + 1] = str:sub(i, i + 3)
+                    -- lenResult = lenResult + 1
+                    -- result[lenResult] = strsub(str, i, i + 3)
                     i = i + 4
                 else
                     valid = false
@@ -144,7 +154,7 @@ local function safeUtf8(str)
         return str
     else
         -- Replace all non-ASCII bytes with underscore to prevent crashes
-        return (str:gsub("[\128-\255]", "_"))
+        return (string.gsub(str, "[\128-\255]", "_"))
     end
 end
 
@@ -295,9 +305,10 @@ local blendModeMap <const> = {
 
 ---Import PSD file and create Aseprite sprite
 ---@param filename string
+---@param trimImageAlpha boolean
 ---@return boolean success
 ---@return string|nil errorMessage
-local function importFromPsd(filename)
+local function importFromPsd(filename, trimImageAlpha)
     local file = io.open(filename, "rb")
     if not file then
         return false, "Failed to open PSD file: " .. filename
@@ -588,7 +599,7 @@ local function importFromPsd(filename)
             ----------------------------------------------------------
             if layerInfo.groupType == 0 or layerInfo.groupType == 1
                 or layerInfo.groupType == 2 then
-                local grp = sprite:newGroup()
+                local grp <const> = sprite:newGroup()
                 grp.name = safeUtf8(layerInfo.name)
                 grp.isVisible = layerInfo.visible
                 grp.isExpanded = (layerInfo.groupType ~= 2)
@@ -685,19 +696,60 @@ local function importFromPsd(filename)
                     -- TODO: This entire loop could be more efficient.
                     local color <const> = app.pixelColor.rgba(r, g, b, a)
                     image:drawPixel(x, y, color)
-                end
-            end
+                end -- Pixel loop x
+            end     -- Pixel loop y
 
-            -- TODO: Images should be trimmed of excess alpha.
-            local cel <const> = sprite:newCel(lay, 1, image, Point(layerInfo.bounds.left, layerInfo.bounds.top))
+            local layerBounds <const> = layerInfo.bounds
+            local xPos = layerBounds.left
+            local yPos = layerBounds.top
+            local trimmedImage = image
+
+            if trimImageAlpha then
+                local trimRect <const> = trimmedImage:shrinkBounds(aseAlphaIndex)
+                local wTrimRect <const> = trimRect.width
+                local hTrimRect <const> = trimRect.height
+
+                local rectIsValid <const> = wTrimRect > 0
+                    and hTrimRect > 0
+                if rectIsValid then
+                    local xtlTrim <const> = trimRect.x
+                    local ytlTrim <const> = trimRect.y
+
+                    local trimmedSpec <const> = ImageSpec {
+                        width = wTrimRect,
+                        height = hTrimRect,
+                        colorMode = aseColorMode,
+                        transparentColor = aseAlphaIndex,
+                    }
+                    imageSpec.colorSpace = aseColorSpace
+
+                    trimmedImage = Image(trimmedSpec)
+                    trimmedImage:drawImage(
+                        image,
+                        Point(-xtlTrim, -ytlTrim),
+                        255,
+                        BlendMode.SRC)
+
+                    xPos = xPos + xtlTrim
+                    yPos = yPos + ytlTrim
+                end -- End trim rectangle is valid.
+            end     -- End use image trimming.
+
+            local cel <const> = sprite:newCel(
+                lay,
+                1, -- TODO: This should be a frame index, not a magic number.
+                trimmedImage,
+                Point(xPos, yPos))
         end
 
+        -- TODO: Remove goto statements.
         ::nextRecord::
         -- ↓ continue for-loop
     end -- End loop.
 
+    -- Remove default layer if other layers have been created.
     if #sprite.layers > 1 then
-        sprite:deleteLayer(defaultLayer) -- Remove default layer
+        sprite:deleteLayer(defaultLayer)
     end
 
     return true, nil
@@ -742,7 +794,7 @@ local function showImportDialog()
         onclick = function()
             local filename = dlg.data.filename --[[@as string]]
             if filename and filename ~= "" then
-                local success, errorMessage = importFromPsd(filename)
+                local success, errorMessage = importFromPsd(filename, true)
                 if success then
                     app.command.ColorQuantization {
                         algorithm = 1,
@@ -791,7 +843,7 @@ if app.isUIAvailable then
 else
     local filename = getOptionsFromCLI()
     if filename then
-        local success, errorMessage = importFromPsd(filename)
+        local success, errorMessage = importFromPsd(filename, true)
         if success then
             print("PSD file imported successfully: " .. filename)
         else
