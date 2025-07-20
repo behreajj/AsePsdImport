@@ -579,6 +579,8 @@ local function importFromPsd(filename, trimImageAlpha)
         transparentColor = aseAlphaIndex,
     }
     spriteSpec.colorSpace = aseColorSpace
+
+    -- TODO: Preserve fore and background color before creating sprite.
     local sprite <const> = Sprite(spriteSpec)
     sprite.filename = app.fs.fileName(filename)
     local defaultLayer <const> = sprite.layers[1]
@@ -588,7 +590,7 @@ local function importFromPsd(filename, trimImageAlpha)
 
     -- TODO: Use while loop.
     for i = layerCount, 1, -1 do
-        local layerInfo = layers[i]
+        local layerInfo <const> = layers[i]
 
         ------------------------------------------------------------
         -- (1) Overall structure for layer/group creation
@@ -643,15 +645,18 @@ local function importFromPsd(filename, trimImageAlpha)
         lay.stackIndex = 1
 
         -- Create image if layer has content
-        local layerWidth = layerInfo.bounds.right - layerInfo.bounds.left
-        local layerHeight = layerInfo.bounds.bottom - layerInfo.bounds.top
+        -- TODO: Look into this being different from
+        -- Aseprite convention of right = width - 1,
+        -- and so width = 1 + right - left .
+        local wLayer <const> = layerInfo.bounds.right - layerInfo.bounds.left
+        local hLayer <const> = layerInfo.bounds.bottom - layerInfo.bounds.top
 
-        if layerWidth > 0
-            and layerHeight > 0
+        if wLayer > 0
+            and hLayer > 0
             and #layerInfo.channelData >= 4 then
             local imageSpec <const> = ImageSpec {
-                width = layerWidth,
-                height = layerHeight,
+                width = wLayer,
+                height = hLayer,
                 colorMode = aseColorMode,
                 transparentColor = aseAlphaIndex,
             }
@@ -665,15 +670,15 @@ local function importFromPsd(filename, trimImageAlpha)
             local aData = layerInfo.channelData[4] -- may be nil
 
             -- If no alpha channel, create opaque alpha data
-            local expectedSize <const> = layerWidth * layerHeight
+            local expectedSize <const> = wLayer * hLayer
             local opaque <const> = string.rep(string.char(255), expectedSize)
             if not aData or #aData == 0 then
                 aData = opaque
             end
 
-            for y = 0, layerHeight - 1 do
-                for x = 0, layerWidth - 1 do
-                    local pixelIndex = y * layerWidth + x + 1
+            for y = 0, hLayer - 1 do
+                for x = 0, wLayer - 1 do
+                    local pixelIndex = y * wLayer + x + 1
 
                     local r = 0
                     local g = 0
@@ -794,7 +799,8 @@ local function showImportDialog()
         onclick = function()
             local filename = dlg.data.filename --[[@as string]]
             if filename and filename ~= "" then
-                local success, errorMessage = importFromPsd(filename, true)
+                local success <const>,
+                errorMessage <const> = importFromPsd(filename, true)
                 if success then
                     app.command.ColorQuantization {
                         algorithm = 1,
@@ -805,7 +811,10 @@ local function showImportDialog()
                 else
                     app.alert({
                         title = "Import Failed",
-                        text = "An error occurred while importing the PSD file:\n" .. (errorMessage or "Unknown error"),
+                        text = {
+                            "An error occurred while importing the PSD file:",
+                            (errorMessage or "Unknown error"),
+                        },
                         buttons = "OK"
                     })
                 end
