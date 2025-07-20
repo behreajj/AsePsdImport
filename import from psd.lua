@@ -203,12 +203,12 @@ end
 ---@param file file*
 ---@return string
 local function readPascalString(file)
-    local len = readU8(file)
+    local len <const> = readU8(file)
     local str = ""
     if len > 0 then
         str = file:read(len)
     end
-    local padBytes = (4 - ((len + 1) % 4)) % 4
+    local padBytes <const> = (4 - ((len + 1) % 4)) % 4
     if padBytes > 0 then
         _ = file:read(padBytes)
     end
@@ -318,7 +318,9 @@ local blendModeMap <const> = {
 local function importFromPsd(filename, trimImageAlpha)
     local file = io.open(filename, "rb")
     if not file then
-        return false, "Failed to open PSD file: " .. filename
+        return false, string.format(
+            "Failed to open PSD file: \"%s\".",
+            filename)
     end
 
     -- ==============================
@@ -329,52 +331,87 @@ local function importFromPsd(filename, trimImageAlpha)
     local signature = file:read(4)
     if signature ~= "8BPS" then
         file:close()
-        return false, "Not a valid PSD file (invalid signature)"
+        return false, string.format(
+            "Invalid PSD signature.")
     end
 
     -- Check version
-    local version = readU16BE(file)
+    local version <const> = readU16BE(file)
     if version ~= 1 then
         file:close()
-        return false, "Unsupported PSD version: " .. version
+        return false, string.format(
+            "Unsupported PSD version: %d.",
+            version)
     end
 
     -- Skip reserved bytes
     _ = file:read(6)
 
     -- Read channels count
-    local channels = readU16BE(file)
-    if channels ~= 3 and channels ~= 4 then
+    local channels <const> = readU16BE(file)
+    if channels ~= 3
+        and channels ~= 4 then
         file:close()
-        return false, "Unsupported channel count: " .. channels .. " (only 3 or 4 allowed)"
+        return false, string.format(
+            "Unsupported channel count: %d.",
+            channels)
     end
-    local hasAlpha = (channels == 4)
+    local hasAlpha <const> = (channels == 4)
 
     -- Read dimensions
-    local height = readU32BE(file)
-    local width = readU32BE(file)
+    local height <const> = readU32BE(file)
+    local width <const> = readU32BE(file)
 
     -- Check depth
     local depth = readU16BE(file)
     if depth ~= 8 then
         file:close()
-        return false, "Unsupported bit depth: " .. depth .. " (expected 8)"
+        return false, string.format(
+            "Unsupported bit depth: %d.",
+            depth)
     end
 
     -- Check color mode
+    -- bitmap = 0
+    -- grayscale = 1
+    -- indexed = 2
+    -- RGB = 3
+    -- Lab = 9
     local psdColorMode <const> = readU16BE(file)
     if psdColorMode ~= 3 then
         file:close()
-        return false, "Unsupported color mode: " .. psdColorMode .. " (expected 3 for RGB)"
+        return false, string.format(
+            "Unsupported color mode: %d.",
+            psdColorMode)
     end
 
     -- ==============================
     -- Color Mode Data Section
     -- ==============================
 
+    -- Cache global methods used in loop to locals.
+    local strbyte <const> = string.byte
+    local rgbaCompose <const> = app.pixelColor.rgba
+    local tinsert <const> = table.insert
+    local tremove <const> = table.remove
+    local strchar <const> = string.char
+    local strrep <const> = string.rep
+
+    ---@type Color[]
+    local colorTable <const> = {}
     local colorModeDataLength = readU32BE(file)
     if colorModeDataLength > 0 then
-        _ = file:read(colorModeDataLength)
+        local colorTableData <const> = file:read(colorModeDataLength)
+        local swatchLength <const> = colorModeDataLength // 3
+        local i = 0
+        while i < swatchLength do
+            local r <const> = strbyte(colorTableData, 1 + i)
+            local g <const> = strbyte(colorTableData, 1 + swatchLength + i)
+            local b <const> = strbyte(colorTableData, 1 + swatchLength * 2 + i)
+            colorTable[1 + i] = Color { r = r, g = g, b = b, a = 255 }
+            -- print(string.format("i: %d, r: %d, g: %d, b: %d", i, r, g, b))
+            i = i + 1
+        end
     end
 
     -- ==============================
@@ -390,21 +427,18 @@ local function importFromPsd(filename, trimImageAlpha)
     -- Layer and Mask Information Section
     -- ==============================
 
-    local layerAndMaskLength = readU32BE(file)
-    local layerAndMaskEnd = file:seek("cur") + layerAndMaskLength
+    local layerAndMaskLength <const> = readU32BE(file)
+    local layerAndMaskEnd <const> = file:seek("cur") + layerAndMaskLength
 
-    local layerInfoLength = readU32BE(file)
-    local layerCount = readI16BE(file)
+    local layerInfoLength <const> = readU32BE(file)
+    local layerCount <const> = math.abs(readI16BE(file))
 
-    if layerCount < 0 then
-        layerCount = -layerCount -- Absolute value for layer count
-    end
+    ---@type table[]
+    local layers <const> = {}
 
-    -- Read layer records
-    local layers = {} ---@type LayerInfo[]
-
+    ---TODO: Replace with while loop.
     for i = 1, layerCount do
-        local layer = {}
+        local layer <const> = {}
 
         -- Read bounds
         layer.bounds = {
@@ -415,20 +449,22 @@ local function importFromPsd(filename, trimImageAlpha)
         }
 
         -- Read channel count and channel info
-        local channelCount = readU16BE(file)
+        local channelCount <const> = readU16BE(file)
         layer.channels = {}
 
         for j = 1, channelCount do
-            local channelId = readI16BE(file)
-            local channelSize = readU32BE(file)
+            local channelId <const> = readI16BE(file)
+            local channelSize <const> = readU32BE(file)
             layer.channels[j] = { id = channelId, size = channelSize }
         end
 
         -- Read blend mode signature
-        local blendSig = file:read(4)
+        local blendSig <const> = file:read(4)
         if blendSig ~= "8BIM" then
             file:close()
-            return false, "Invalid blend mode signature in layer " .. i
+            return false, string.format(
+                "Invalid blend mode signature in layer %d.",
+                i)
         end
 
         -- Read blend mode
@@ -441,24 +477,24 @@ local function importFromPsd(filename, trimImageAlpha)
         readU8(file)
 
         -- Read flags
-        local flags = readU8(file)
+        local flags <const> = readU8(file)
         layer.visible = (flags & 2) == 0 -- Bit 1: visibility (0 = visible)
 
         -- Read filler
         readU8(file)
 
         -- Read extra data field length
-        local extraLength = readU32BE(file)
-        local extraStart = file:seek("cur")
+        local extraLength <const> = readU32BE(file)
+        local extraStart <const> = file:seek("cur")
 
         -- Skip layer mask (always 0 in our export)
-        local maskLength = readU32BE(file)
+        local maskLength <const> = readU32BE(file)
         if maskLength > 0 then
             _ = file:read(maskLength)
         end
 
         -- Skip blending ranges (always 0 in our export)
-        local blendingRangesLength = readU32BE(file)
+        local blendingRangesLength <const> = readU32BE(file)
         if blendingRangesLength > 0 then
             _ = file:read(blendingRangesLength)
         end
@@ -473,15 +509,15 @@ local function importFromPsd(filename, trimImageAlpha)
         ----------------------------------------------------------------
         -- Scan entire additional information area (previous single-if → while-loop)
         ----------------------------------------------------------------
-        local curPos = file:seek("cur")
-        local processed = curPos - extraStart
+        local curPos <const> = file:seek("cur")
+        local processed <const> = curPos - extraStart
         local remaining = extraLength - processed
 
-        while remaining >= 12 do                 -- Continue if header is larger than 12 bytes
-            local addSig = file:read(4)          -- "8BIM"
-            local addKey = file:read(4)          -- "luni" / "lsct" etc.
-            local addLen = readU32BE(file)       -- payload length
-            local padded = addLen + (addLen % 2) -- 2-byte even padding
+        while remaining >= 12 do                         -- Continue if header is larger than 12 bytes
+            local addSig <const> = file:read(4)          -- "8BIM"
+            local addKey <const> = file:read(4)          -- "luni" / "lsct" etc.
+            local addLen <const> = readU32BE(file)       -- payload length
+            local padded <const> = addLen + (addLen % 2) -- 2-byte even padding
             remaining = remaining - (12 + padded)
 
             if addSig ~= "8BIM" then -- Unexpected signature
@@ -499,12 +535,12 @@ local function importFromPsd(filename, trimImageAlpha)
                     _ = file:read(padded - 4)
                 end
             elseif addKey == "luni" and addLen >= 4 then -- ★ Unicode layer name found
-                local count = readU32BE(file)            -- UTF-16 code unit count
-                local bytesToRead = count * 2
+                local count <const> = readU32BE(file)    -- UTF-16 code unit count
+                local bytesToRead <const> = count * 2
                 if bytesToRead > 0 and bytesToRead <= addLen - 4 then
-                    local utf16 = file:read(bytesToRead) -- Read UTF-16BE data
-                    layer.name = utf16beToUtf8(utf16)    -- Convert to UTF-8
-                    if padded > 4 + bytesToRead then     -- Skip remaining padding
+                    local utf16 <const> = file:read(bytesToRead) -- Read UTF-16BE data
+                    layer.name = utf16beToUtf8(utf16)            -- Convert to UTF-8
+                    if padded > 4 + bytesToRead then             -- Skip remaining padding
                         _ = file:read(padded - 4 - bytesToRead)
                     end
                 else
@@ -515,7 +551,9 @@ local function importFromPsd(filename, trimImageAlpha)
                 end
             else
                 -- Uninterested block: skip entire payload
-                if padded > 0 then _ = file:read(padded) end
+                if padded > 0 then
+                    _ = file:read(padded)
+                end
             end
         end
 
@@ -528,25 +566,27 @@ local function importFromPsd(filename, trimImageAlpha)
         layer.channelData = {}
 
         -- Create channel data mapping by channel ID
-        local channelDataByID = {}
+        local channelDataByID <const> = {}
 
         for j = 1, #layer.channels do
-            local channelInfo = layer.channels[j]
-            local channelData = file:read(channelInfo.size)
+            local channelInfo <const> = layer.channels[j]
+            local channelData <const> = file:read(channelInfo.size)
 
             local decodedData = ""
             if #channelData >= 2 then
-                local compression = string.unpack(">I2", channelData:sub(1, 2))
+                local compression <const> = string.unpack(">I2", channelData:sub(1, 2))
                 if compression == 1 then
                     -- RLE compression
-                    local imageHeight = layer.bounds.bottom - layer.bounds.top
+                    local imageHeight <const> = layer.bounds.bottom - layer.bounds.top
                     if imageHeight > 0 then
                         local rowSizeTableSize = imageHeight * 2
                         if #channelData >= 2 + rowSizeTableSize then
                             local rowData = channelData:sub(3 + rowSizeTableSize)
 
                             -- Remove padding if present (odd-length rows get 0x80 padding)
-                            if #rowData > 0 and string.byte(rowData, #rowData) == 0x80 and #rowData % 2 == 0 then
+                            if #rowData > 0
+                                and string.byte(rowData, #rowData) == 0x80
+                                and #rowData % 2 == 0 then
                                 rowData = rowData:sub(1, #rowData - 1)
                             end
 
@@ -574,14 +614,6 @@ local function importFromPsd(filename, trimImageAlpha)
     -- ==============================
     -- Create Aseprite Sprite
     -- ==============================
-
-    -- Cache global methods used in loop to locals.
-    local strbyte <const> = string.byte
-    local rgbaCompose <const> = app.pixelColor.rgba
-    local tinsert <const> = table.insert
-    local tremove <const> = table.remove
-    local strchar <const> = string.char
-    local strrep <const> = string.rep
 
     local aseColorMode <const> = ColorMode.RGB
     local aseAlphaIndex <const> = 0
@@ -773,6 +805,26 @@ local function importFromPsd(filename, trimImageAlpha)
         -- ↓ continue for-loop
     end -- End loop.
 
+    if #colorTable <= 0 then
+        app.command.ColorQuantization {
+            algorithm = 1,
+            maxColors = 256,
+            ui = false,
+            withAlpha = true,
+        }
+    else
+        local lenColorTable <const> = #colorTable
+        local palette <const> = sprite.palettes[1]
+        app.transaction("Set Palette", function()
+            palette:resize(lenColorTable)
+            local j = 0
+            while j < lenColorTable do
+                palette:setColor(j, colorTable[j + 1])
+                j = j + 1
+            end
+        end)
+    end
+
     -- Remove default layer if other layers have been created.
     if #sprite.layers > 1 then
         sprite:deleteLayer(defaultLayer)
@@ -823,12 +875,6 @@ local function showImportDialog()
                 local success <const>,
                 errorMessage <const> = importFromPsd(filename, true)
                 if success then
-                    app.command.ColorQuantization {
-                        algorithm = 1,
-                        maxColors = 256,
-                        ui = false,
-                        withAlpha = true,
-                    }
                 else
                     app.alert({
                         title = "Import Failed",
