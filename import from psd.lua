@@ -347,43 +347,12 @@ local function importFromPsd(filename, trimImageAlpha)
     -- Skip reserved bytes
     _ = file:read(6)
 
-    -- Read channels count
     local channels <const> = readU16BE(file)
-    if channels ~= 3
-        and channels ~= 4 then
-        file:close()
-        return false, string.format(
-            "Unsupported channel count: %d.",
-            channels)
-    end
     local hasAlpha <const> = (channels == 4)
-
-    -- Read dimensions
-    local height <const> = readU32BE(file)
-    local width <const> = readU32BE(file)
-
-    -- Check depth
-    local depth = readU16BE(file)
-    if depth ~= 8 then
-        file:close()
-        return false, string.format(
-            "Unsupported bit depth: %d.",
-            depth)
-    end
-
-    -- Check color mode
-    -- bitmap = 0
-    -- grayscale = 1
-    -- indexed = 2
-    -- RGB = 3
-    -- Lab = 9
+    local hSprite <const> = readU32BE(file)
+    local wSprite <const> = readU32BE(file)
+    local bitDepth = readU16BE(file)
     local psdColorMode <const> = readU16BE(file)
-    if psdColorMode ~= 3 then
-        file:close()
-        return false, string.format(
-            "Unsupported color mode: %d.",
-            psdColorMode)
-    end
 
     -- ==============================
     -- Color Mode Data Section
@@ -412,6 +381,34 @@ local function importFromPsd(filename, trimImageAlpha)
             -- print(string.format("i: %d, r: %d, g: %d, b: %d", i, r, g, b))
             i = i + 1
         end
+    end
+
+    -- Check color mode
+    -- bitmap = 0
+    -- grayscale = 1
+    -- indexed = 2
+    -- RGB = 3
+    -- Lab = 9
+    if psdColorMode ~= 3 then
+        file:close()
+        return false, string.format(
+            "Unsupported color mode: %d.",
+            psdColorMode)
+    end
+
+    if channels ~= 3
+        and channels ~= 4 then
+        file:close()
+        return false, string.format(
+            "Unsupported channel count: %d.",
+            channels)
+    end
+
+    if bitDepth ~= 8 then
+        file:close()
+        return false, string.format(
+            "Unsupported bit depth: %d.",
+            bitDepth)
     end
 
     -- ==============================
@@ -620,8 +617,8 @@ local function importFromPsd(filename, trimImageAlpha)
     local aseColorSpace <const> = ColorSpace { sRGB = true }
 
     local spriteSpec <const> = ImageSpec {
-        width = width,
-        height = height,
+        width = wSprite,
+        height = hSprite,
         colorMode = aseColorMode,
         transparentColor = aseAlphaIndex,
     }
@@ -630,6 +627,20 @@ local function importFromPsd(filename, trimImageAlpha)
     -- TODO: Preserve fore and background color before creating sprite.
     local sprite <const> = Sprite(spriteSpec)
     sprite.filename = app.fs.fileName(filename)
+
+    local lenAseColors <const> = #colorTable
+    if lenAseColors > 0 then
+        local palette <const> = sprite.palettes[1]
+        app.transaction("Set Palette", function()
+            palette:resize(lenAseColors)
+            local j = 0
+            while j < lenAseColors do
+                palette:setColor(j, colorTable[j + 1])
+                j = j + 1
+            end
+        end)
+    end
+
     local defaultLayer <const> = sprite.layers[1]
 
     -- Process layers in reverse order to match PSD layer stack (Top→Bottom becomes Bottom→Top)
@@ -805,24 +816,13 @@ local function importFromPsd(filename, trimImageAlpha)
         -- ↓ continue for-loop
     end -- End loop.
 
-    if #colorTable <= 0 then
+    if lenAseColors <= 0 then
         app.command.ColorQuantization {
             algorithm = 1,
             maxColors = 256,
             ui = false,
             withAlpha = true,
         }
-    else
-        local lenColorTable <const> = #colorTable
-        local palette <const> = sprite.palettes[1]
-        app.transaction("Set Palette", function()
-            palette:resize(lenColorTable)
-            local j = 0
-            while j < lenColorTable do
-                palette:setColor(j, colorTable[j + 1])
-                j = j + 1
-            end
-        end)
     end
 
     -- Remove default layer if other layers have been created.
