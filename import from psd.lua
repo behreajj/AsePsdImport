@@ -368,7 +368,7 @@ local function importFromPsd(filename, trimImageAlpha)
 
     ---@type Color[]
     local colorTable <const> = {}
-    local colorModeDataLength = readU32BE(file)
+    local colorModeDataLength <const> = readU32BE(file)
     if colorModeDataLength > 0 then
         local colorTableData <const> = file:read(colorModeDataLength)
         local swatchLength <const> = colorModeDataLength // 3
@@ -555,7 +555,7 @@ local function importFromPsd(filename, trimImageAlpha)
         end
 
         layers[i] = layer
-    end
+    end -- End layer data packet writing.
 
     -- Read channel image data
     for i = 1, layerCount do
@@ -600,10 +600,10 @@ local function importFromPsd(filename, trimImageAlpha)
         end
 
         -- Store in standard order: R, G, B, A
-        layer.channelData[1] = channelDataByID[0] or ""                             -- Red
-        layer.channelData[2] = channelDataByID[1] or ""                             -- Green
-        layer.channelData[3] = channelDataByID[2] or ""                             -- Blue
-        layer.channelData[4] = channelDataByID[-1] or channelDataByID[0xFFFF] or "" -- Alpha
+        layer.channelData[1] = channelDataByID[0] or ""
+        layer.channelData[2] = channelDataByID[1] or ""
+        layer.channelData[3] = channelDataByID[2] or ""
+        layer.channelData[4] = channelDataByID[-1] or channelDataByID[0xFFFF] or ""
     end
 
     file:close()
@@ -611,6 +611,27 @@ local function importFromPsd(filename, trimImageAlpha)
     -- ==============================
     -- Create Aseprite Sprite
     -- ==============================
+
+    -- Preserve fore- and background colors.
+    if app.isUIAvailable then
+        local fgc <const> = app.fgColor
+        app.fgColor = Color {
+            r = fgc.red,
+            g = fgc.green,
+            b = fgc.blue,
+            a = fgc.alpha
+        }
+
+        app.command.SwitchColors()
+        local bgc <const> = app.fgColor
+        app.fgColor = Color {
+            r = bgc.red,
+            g = bgc.green,
+            b = bgc.blue,
+            a = bgc.alpha
+        }
+        app.command.SwitchColors()
+    end
 
     local aseColorMode <const> = ColorMode.RGB
     local aseAlphaIndex <const> = 0
@@ -623,8 +644,6 @@ local function importFromPsd(filename, trimImageAlpha)
         transparentColor = aseAlphaIndex,
     }
     spriteSpec.colorSpace = aseColorSpace
-
-    -- TODO: Preserve fore and background color before creating sprite.
     local sprite <const> = Sprite(spriteSpec)
     sprite.filename = app.fs.fileName(filename)
 
@@ -704,9 +723,6 @@ local function importFromPsd(filename, trimImageAlpha)
         lay.stackIndex = 1
 
         -- Create image if layer has content
-        -- TODO: Look into this being different from
-        -- Aseprite convention of right = width - 1,
-        -- and so width = 1 + right - left .
         local wLayer <const> = layerInfo.bounds.right - layerInfo.bounds.left
         local hLayer <const> = layerInfo.bounds.bottom - layerInfo.bounds.top
 
@@ -806,7 +822,7 @@ local function importFromPsd(filename, trimImageAlpha)
 
             local cel <const> = sprite:newCel(
                 lay,
-                1, -- TODO: This should be a frame index, not a magic number.
+                1,
                 trimmedImage,
                 Point(xPos, yPos))
         end
@@ -870,7 +886,8 @@ local function showImportDialog()
         text = "&OK",
         focus = false,
         onclick = function()
-            local filename = dlg.data.filename --[[@as string]]
+            local args <const> = dlg.data
+            local filename <const> = args.filename --[[@as string]]
             if filename and filename ~= "" then
                 local success <const>,
                 errorMessage <const> = importFromPsd(filename, true)
