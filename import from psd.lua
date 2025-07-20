@@ -4,6 +4,29 @@
 -- Supports both RGB (3 channels) and RGBA (4 channels) PSD files
 -- Fully supports PSD group/folder structures with proper Layer.isGroup mapping
 
+---@param i integer
+---@return string
+local function colorModeIntToString(i)
+    if i == 0 then return "BITMAP" end
+    if i == 1 then return "GRAYSCALE" end
+    if i == 2 then return "INDEXED" end
+    if i == 3 then return "RGB" end
+    if i == 4 then return "CMYK" end
+    if i == 7 then return "MULTICHANNEL" end
+    if i == 8 then return "DUOTONE" end
+    if i == 9 then return "LAB" end
+    return "UNKNOWN"
+end
+
+---@param i integer
+---@return ColorMode
+local function colorModeIntToAseprite(i)
+    if i == 1 then return ColorMode.GRAY end
+    if i == 2 then return ColorMode.INDEXED end
+    if i == 3 then return ColorMode.RGB end
+    return ColorMode.RGB
+end
+
 -- ==============================
 -- UTF-8 Safety Functions
 -- ==============================
@@ -394,8 +417,8 @@ local function importFromPsd(filename, trimImageAlpha)
     if psdColorMode ~= 3 then
         file:close()
         return false, string.format(
-            "Unsupported color mode: %d.",
-            psdColorMode)
+            "Unsupported color mode: %s (%d).",
+            colorModeIntToString(psdColorMode), psdColorMode)
     end
 
     if channels ~= 3
@@ -437,10 +460,10 @@ local function importFromPsd(filename, trimImageAlpha)
 
     ---TODO: Replace with while loop.
     for i = 1, layerCount do
-        local layer <const> = {}
+        local layerInfo <const> = {}
 
         -- Read bounds
-        layer.bounds = {
+        layerInfo.bounds = {
             top = readI32BE(file),
             left = readI32BE(file),
             bottom = readI32BE(file),
@@ -449,12 +472,12 @@ local function importFromPsd(filename, trimImageAlpha)
 
         -- Read channel count and channel info
         local channelCount <const> = readU16BE(file)
-        layer.channels = {}
+        layerInfo.channels = {}
 
         for j = 1, channelCount do
             local channelId <const> = readI16BE(file)
             local channelSize <const> = readU32BE(file)
-            layer.channels[j] = { id = channelId, size = channelSize }
+            layerInfo.channels[j] = { id = channelId, size = channelSize }
         end
 
         -- Read blend mode signature
@@ -467,17 +490,17 @@ local function importFromPsd(filename, trimImageAlpha)
         end
 
         -- Read blend mode
-        layer.blendMode = file:read(4)
+        layerInfo.blendMode = file:read(4)
 
         -- Read opacity
-        layer.opacity = readU8(file)
+        layerInfo.opacity = readU8(file)
 
         -- Read clipping (skip)
         readU8(file)
 
         -- Read flags
         local flags <const> = readU8(file)
-        layer.visible = (flags & 2) == 0 -- Bit 1: visibility (0 = visible)
+        layerInfo.visible = (flags & 2) == 0 -- Bit 1: visibility (0 = visible)
 
         -- Read filler
         readU8(file)
@@ -499,11 +522,11 @@ local function importFromPsd(filename, trimImageAlpha)
         end
 
         -- Read layer name
-        layer.name = readPascalString(file)
+        layerInfo.name = readPascalString(file)
 
         -- Check for additional layer information (lsct)
-        layer.isGroup = false
-        layer.groupType = nil
+        layerInfo.isGroup = false
+        layerInfo.groupType = nil
 
         ----------------------------------------------------------------
         -- Scan entire additional information area (previous single-if → while-loop)
@@ -527,10 +550,10 @@ local function importFromPsd(filename, trimImageAlpha)
                 break
             end
 
-            if addKey == "lsct" and addLen >= 4 then -- ★ Folder information found
-                layer.groupType = readU32BE(file)    -- 0/1/2=opener, 3=closer
-                layer.isGroup = true
-                if padded > 4 then                   -- Skip remaining
+            if addKey == "lsct" and addLen >= 4 then  -- ★ Folder information found
+                layerInfo.groupType = readU32BE(file) -- 0/1/2=opener, 3=closer
+                layerInfo.isGroup = true
+                if padded > 4 then                    -- Skip remaining
                     _ = file:read(padded - 4)
                 end
             elseif addKey == "luni" and addLen >= 4 then -- ★ Unicode layer name found
@@ -538,7 +561,7 @@ local function importFromPsd(filename, trimImageAlpha)
                 local bytesToRead <const> = count * 2
                 if bytesToRead > 0 and bytesToRead <= addLen - 4 then
                     local utf16 <const> = file:read(bytesToRead) --[[@as string]] -- Read UTF-16BE data
-                    layer.name = utf16beToUtf8(utf16)                             -- Convert to UTF-8
+                    layerInfo.name = utf16beToUtf8(utf16)                         -- Convert to UTF-8
                     if padded > 4 + bytesToRead then                              -- Skip remaining padding
                         _ = file:read(padded - 4 - bytesToRead)
                     end
@@ -556,7 +579,7 @@ local function importFromPsd(filename, trimImageAlpha)
             end
         end
 
-        layers[i] = layer
+        layers[i] = layerInfo
     end -- End layer data packet writing.
 
     -- Read channel image data
@@ -601,11 +624,17 @@ local function importFromPsd(filename, trimImageAlpha)
             channelDataByID[channelInfo.id] = decodedData
         end
 
+        -- TODO: If these are non-interleaved (rrrrr.... ggggg... bbbbb...)
+        -- Would this be a good place to interleave them, so that irregular
+        -- array lengths don't need to be checked later?
+
         -- Store in standard order: R, G, B, A
         layer.channelData[1] = channelDataByID[0] or ""
         layer.channelData[2] = channelDataByID[1] or ""
         layer.channelData[3] = channelDataByID[2] or ""
-        layer.channelData[4] = channelDataByID[-1] or channelDataByID[0xFFFF] or ""
+        layer.channelData[4] = channelDataByID[-1]
+            or channelDataByID[0xFFFF]
+            or ""
     end
 
     file:close()
@@ -635,7 +664,7 @@ local function importFromPsd(filename, trimImageAlpha)
         app.command.SwitchColors()
     end
 
-    local aseColorMode <const> = ColorMode.RGB
+    local aseColorMode <const> = colorModeIntToAseprite(psdColorMode)
     local aseAlphaIndex <const> = 0
     local aseColorSpace <const> = ColorSpace { sRGB = true }
 
