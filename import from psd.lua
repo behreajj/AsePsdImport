@@ -187,46 +187,11 @@ end
 -- Helper Functions for Binary Reading
 -- ==============================
 
----Read unsigned 16-bit big-endian integer
----@param file file*
----@return integer
-local function readU16BE(file)
-    return string.unpack(">I2", file:read(2))
-end
-
----Read signed 16-bit big-endian integer
----@param file file*
----@return integer
-local function readI16BE(file)
-    return string.unpack(">i2", file:read(2))
-end
-
----Read unsigned 32-bit big-endian integer
----@param file file*
----@return integer
-local function readU32BE(file)
-    return string.unpack(">I4", file:read(4))
-end
-
----Read signed 32-bit big-endian integer
----@param file file*
----@return integer
-local function readI32BE(file)
-    return string.unpack(">i4", file:read(4))
-end
-
----Read unsigned 8-bit integer
----@param file file*
----@return integer
-local function readU8(file)
-    return string.unpack("B", file:read(1))
-end
-
 ---Read Pascal string (length-prefixed, padded to 4-byte boundary)
 ---@param file file*
 ---@return string
 local function readPascalString(file)
-    local len <const> = readU8(file)
+    local len <const> = string.byte(file:read(1))
     local str = ""
     if len > 0 then
         str = file:read(len) --[[@as string]]
@@ -346,6 +311,18 @@ local function importFromPsd(filename, trimImageAlpha)
             filename)
     end
 
+    -- Cache global methods used in loop to locals.
+    local strbyte <const> = string.byte
+    local strchar <const> = string.char
+    local strrepeat <const> = string.rep
+    local strsub <const> = string.sub
+    local strunpack <const> = string.unpack
+
+    local tinsert <const> = table.insert
+    local tremove <const> = table.remove
+
+    local rgbaCompose <const> = app.pixelColor.rgba
+
     -- ==============================
     -- File Header Section
     -- ==============================
@@ -359,7 +336,7 @@ local function importFromPsd(filename, trimImageAlpha)
     end
 
     -- Check version
-    local version <const> = readU16BE(file)
+    local version <const> = strunpack(">I2", file:read(2))
     if version ~= 1 then
         file:close()
         return false, string.format(
@@ -370,30 +347,20 @@ local function importFromPsd(filename, trimImageAlpha)
     -- Skip reserved bytes
     _ = file:read(6)
 
-    local channels <const> = readU16BE(file)
-    local hasAlpha <const> = (channels == 4)
-    local hSprite <const> = readU32BE(file)
-    local wSprite <const> = readU32BE(file)
-    local bitDepth = readU16BE(file)
-    local psdColorMode <const> = readU16BE(file)
+    local channels <const> = strunpack(">I2", file:read(2))
+    -- local hasAlpha <const> = (channels == 4)
+    local hSprite <const> = strunpack(">I4", file:read(4))
+    local wSprite <const> = strunpack(">I4", file:read(4))
+    local bitDepth <const> = strunpack(">I2", file:read(2))
+    local psdColorMode <const> = strunpack(">I2", file:read(2))
 
     -- ==============================
     -- Color Mode Data Section
     -- ==============================
 
-    -- Cache global methods used in loop to locals.
-    local strbyte <const> = string.byte
-    local rgbaCompose <const> = app.pixelColor.rgba
-    local tinsert <const> = table.insert
-    local tremove <const> = table.remove
-    local strchar <const> = string.char
-    local strrepeat <const> = string.rep
-    local strsub <const> = string.sub
-    local strunpack <const> = string.unpack
-
     ---@type Color[]
     local colorTable <const> = {}
-    local colorModeDataLength <const> = readU32BE(file)
+    local colorModeDataLength <const> = strunpack(">I4", file:read(4))
     if colorModeDataLength > 0 then
         local colorTableData <const> = file:read(colorModeDataLength) --[[@as string]]
         local swatchLength <const> = colorModeDataLength // 3
@@ -440,7 +407,7 @@ local function importFromPsd(filename, trimImageAlpha)
     -- Image Resources Section
     -- ==============================
 
-    local imageResourcesLength = readU32BE(file)
+    local imageResourcesLength = strunpack(">I4", file:read(4))
     if imageResourcesLength > 0 then
         _ = file:read(imageResourcesLength)
     end
@@ -449,11 +416,11 @@ local function importFromPsd(filename, trimImageAlpha)
     -- Layer and Mask Information Section
     -- ==============================
 
-    local layerAndMaskLength <const> = readU32BE(file)
+    local layerAndMaskLength <const> = strunpack(">I4", file:read(4))
     local layerAndMaskEnd <const> = file:seek("cur") + layerAndMaskLength
 
-    local layerInfoLength <const> = readU32BE(file)
-    local layerCount <const> = math.abs(readI16BE(file))
+    local layerInfoLength <const> = strunpack(">I4", file:read(4))
+    local layerCount <const> = math.abs(strunpack(">i2", file:read(2)))
 
     ---@type table[]
     local layers <const> = {}
@@ -464,19 +431,19 @@ local function importFromPsd(filename, trimImageAlpha)
 
         -- Read bounds
         layerInfo.bounds = {
-            top = readI32BE(file),
-            left = readI32BE(file),
-            bottom = readI32BE(file),
-            right = readI32BE(file)
+            top = strunpack(">i4", file:read(4)),
+            left = strunpack(">i4", file:read(4)),
+            bottom = strunpack(">i4", file:read(4)),
+            right = strunpack(">i4", file:read(4)),
         }
 
         -- Read channel count and channel info
-        local channelCount <const> = readU16BE(file)
+        local channelCount <const> = strunpack(">I2", file:read(2))
         layerInfo.channels = {}
 
         for j = 1, channelCount do
-            local channelId <const> = readI16BE(file)
-            local channelSize <const> = readU32BE(file)
+            local channelId <const> = strunpack(">i2", file:read(2))
+            local channelSize <const> = strunpack(">I4", file:read(4))
             layerInfo.channels[j] = { id = channelId, size = channelSize }
         end
 
@@ -489,34 +456,30 @@ local function importFromPsd(filename, trimImageAlpha)
                 i)
         end
 
-        -- Read blend mode
         layerInfo.blendMode = file:read(4)
-
-        -- Read opacity
-        layerInfo.opacity = readU8(file)
+        layerInfo.opacity = strbyte(file:read(1))
 
         -- Read clipping (skip)
-        readU8(file)
+        _ = strbyte(file:read(1))
 
         -- Read flags
-        local flags <const> = readU8(file)
+        local flags <const> = strbyte(file:read(1))
         layerInfo.visible = (flags & 2) == 0 -- Bit 1: visibility (0 = visible)
 
-        -- Read filler
-        readU8(file)
+        _ = strbyte(file:read(1))
 
         -- Read extra data field length
-        local extraLength <const> = readU32BE(file)
+        local extraLength <const> = strunpack(">I4", file:read(4))
         local extraStart <const> = file:seek("cur")
 
         -- Skip layer mask (always 0 in our export)
-        local maskLength <const> = readU32BE(file)
+        local maskLength <const> = strunpack(">I4", file:read(4))
         if maskLength > 0 then
             _ = file:read(maskLength)
         end
 
         -- Skip blending ranges (always 0 in our export)
-        local blendingRangesLength <const> = readU32BE(file)
+        local blendingRangesLength <const> =strunpack(">I4", file:read(4))
         if blendingRangesLength > 0 then
             _ = file:read(blendingRangesLength)
         end
@@ -538,7 +501,7 @@ local function importFromPsd(filename, trimImageAlpha)
         while remaining >= 12 do                                 -- Continue if header is larger than 12 bytes
             local addSig <const> = file:read(4) --[[@as string]] -- "8BIM"
             local addKey <const> = file:read(4) --[[@as string]] -- "luni" / "lsct" etc.
-            local addLen <const> = readU32BE(file)               -- payload length
+            local addLen <const> = strunpack(">I4", file:read(4))           -- payload length
             local padded <const> = addLen + (addLen % 2)         -- 2-byte even padding
             remaining = remaining - (12 + padded)
 
@@ -551,13 +514,13 @@ local function importFromPsd(filename, trimImageAlpha)
             end
 
             if addKey == "lsct" and addLen >= 4 then  -- ★ Folder information found
-                layerInfo.groupType = readU32BE(file) -- 0/1/2=opener, 3=closer
+                layerInfo.groupType = strunpack(">I4", file:read(4)) -- 0/1/2=opener, 3=closer
                 layerInfo.isGroup = true
                 if padded > 4 then                    -- Skip remaining
                     _ = file:read(padded - 4)
                 end
             elseif addKey == "luni" and addLen >= 4 then -- ★ Unicode layer name found
-                local count <const> = readU32BE(file)    -- UTF-16 code unit count
+                local count <const> = strunpack(">I4", file:read(4))(file)    -- UTF-16 code unit count
                 local bytesToRead <const> = count * 2
                 if bytesToRead > 0 and bytesToRead <= addLen - 4 then
                     local utf16 <const> = file:read(bytesToRead) --[[@as string]] -- Read UTF-16BE data
@@ -986,9 +949,13 @@ else
         local success <const>,
         errorMessage <const> = importFromPsd(filename, true)
         if success then
-            print("PSD file imported successfully: " .. filename)
+            print(
+                "PSD file imported successfully: "
+                .. filename)
         else
-            io.stderr:write("Import failed: " .. (errorMessage or "Unknown error"))
+            io.stderr:write(
+                "Import failed: "
+                .. (errorMessage or "Unknown error"))
         end
     else
         io.stderr:write("Usage: aseprite -b -script 'import from psd.lua' --filename=file.psd")
