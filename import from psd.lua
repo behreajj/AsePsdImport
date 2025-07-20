@@ -206,7 +206,7 @@ local function readPascalString(file)
     local len <const> = readU8(file)
     local str = ""
     if len > 0 then
-        str = file:read(len)
+        str = file:read(len) --[[@as string]]
     end
     local padBytes <const> = (4 - ((len + 1) % 4)) % 4
     if padBytes > 0 then
@@ -328,7 +328,7 @@ local function importFromPsd(filename, trimImageAlpha)
     -- ==============================
 
     -- Check signature
-    local signature = file:read(4)
+    local signature <const> = file:read(4) --[[@as string]]
     if signature ~= "8BPS" then
         file:close()
         return false, string.format(
@@ -364,13 +364,15 @@ local function importFromPsd(filename, trimImageAlpha)
     local tinsert <const> = table.insert
     local tremove <const> = table.remove
     local strchar <const> = string.char
-    local strrep <const> = string.rep
+    local strrepeat <const> = string.rep
+    local strsub <const> = string.sub
+    local strunpack <const> = string.unpack
 
     ---@type Color[]
     local colorTable <const> = {}
     local colorModeDataLength <const> = readU32BE(file)
     if colorModeDataLength > 0 then
-        local colorTableData <const> = file:read(colorModeDataLength)
+        local colorTableData <const> = file:read(colorModeDataLength) --[[@as string]]
         local swatchLength <const> = colorModeDataLength // 3
         local i = 0
         while i < swatchLength do
@@ -456,7 +458,7 @@ local function importFromPsd(filename, trimImageAlpha)
         end
 
         -- Read blend mode signature
-        local blendSig <const> = file:read(4)
+        local blendSig <const> = file:read(4) --[[@as string]]
         if blendSig ~= "8BIM" then
             file:close()
             return false, string.format(
@@ -510,11 +512,11 @@ local function importFromPsd(filename, trimImageAlpha)
         local processed <const> = curPos - extraStart
         local remaining = extraLength - processed
 
-        while remaining >= 12 do                         -- Continue if header is larger than 12 bytes
-            local addSig <const> = file:read(4)          -- "8BIM"
-            local addKey <const> = file:read(4)          -- "luni" / "lsct" etc.
-            local addLen <const> = readU32BE(file)       -- payload length
-            local padded <const> = addLen + (addLen % 2) -- 2-byte even padding
+        while remaining >= 12 do                                 -- Continue if header is larger than 12 bytes
+            local addSig <const> = file:read(4) --[[@as string]] -- "8BIM"
+            local addKey <const> = file:read(4) --[[@as string]] -- "luni" / "lsct" etc.
+            local addLen <const> = readU32BE(file)               -- payload length
+            local padded <const> = addLen + (addLen % 2)         -- 2-byte even padding
             remaining = remaining - (12 + padded)
 
             if addSig ~= "8BIM" then -- Unexpected signature
@@ -535,9 +537,9 @@ local function importFromPsd(filename, trimImageAlpha)
                 local count <const> = readU32BE(file)    -- UTF-16 code unit count
                 local bytesToRead <const> = count * 2
                 if bytesToRead > 0 and bytesToRead <= addLen - 4 then
-                    local utf16 <const> = file:read(bytesToRead) -- Read UTF-16BE data
-                    layer.name = utf16beToUtf8(utf16)            -- Convert to UTF-8
-                    if padded > 4 + bytesToRead then             -- Skip remaining padding
+                    local utf16 <const> = file:read(bytesToRead) --[[@as string]] -- Read UTF-16BE data
+                    layer.name = utf16beToUtf8(utf16)                             -- Convert to UTF-8
+                    if padded > 4 + bytesToRead then                              -- Skip remaining padding
                         _ = file:read(padded - 4 - bytesToRead)
                     end
                 else
@@ -567,31 +569,31 @@ local function importFromPsd(filename, trimImageAlpha)
 
         for j = 1, #layer.channels do
             local channelInfo <const> = layer.channels[j]
-            local channelData <const> = file:read(channelInfo.size)
+            local channelData <const> = file:read(channelInfo.size) --[[@as string]]
 
             local decodedData = ""
             if #channelData >= 2 then
-                local compression <const> = string.unpack(">I2", channelData:sub(1, 2))
+                local compression <const> = strunpack(">I2", strsub(channelData, 1, 2))
                 if compression == 1 then
                     -- RLE compression
                     local imageHeight <const> = layer.bounds.bottom - layer.bounds.top
                     if imageHeight > 0 then
                         local rowSizeTableSize = imageHeight * 2
                         if #channelData >= 2 + rowSizeTableSize then
-                            local rowData = channelData:sub(3 + rowSizeTableSize)
+                            local rowData = strsub(channelData, 3 + rowSizeTableSize)
 
                             -- Remove padding if present (odd-length rows get 0x80 padding)
                             if #rowData > 0
-                                and string.byte(rowData, #rowData) == 0x80
+                                and strbyte(rowData, #rowData) == 0x80
                                 and #rowData % 2 == 0 then
-                                rowData = rowData:sub(1, #rowData - 1)
+                                rowData = strsub(rowData, 1, #rowData - 1)
                             end
 
                             decodedData = unpackBits(rowData)
                         end
                     end
                 else
-                    decodedData = channelData:sub(3)
+                    decodedData = strsub(channelData, 3)
                 end
             end
 
@@ -751,7 +753,7 @@ local function importFromPsd(filename, trimImageAlpha)
 
             -- If no alpha channel, create opaque alpha data
             local expectedSize <const> = wLayer * hLayer
-            local opaque <const> = strrep(strchar(255), expectedSize)
+            local opaque <const> = strrepeat(strchar(255), expectedSize)
             if not aData or lenAData == 0 then
                 aData = opaque
             end
@@ -919,6 +921,7 @@ local function showImportDialog()
 end
 
 local function getOptionsFromCLI()
+    -- TODO: Support trim alpha.
     local filename = nil
 
     for key, value in pairs(app.params) do
