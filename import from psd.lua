@@ -6,7 +6,7 @@
 
 ---@param i integer
 ---@return string
-local function colorModeIntToString(i)
+local function psdColorModeToString(i)
     if i == 0 then return "BITMAP" end
     if i == 1 then return "GRAYSCALE" end
     if i == 2 then return "INDEXED" end
@@ -20,7 +20,7 @@ end
 
 ---@param i integer
 ---@return ColorMode
-local function colorModeIntToAseprite(i)
+local function psdColorModeToAseprite(i)
     if i == 1 then return ColorMode.GRAY end
     if i == 2 then return ColorMode.INDEXED end
     if i == 3 then return ColorMode.RGB end
@@ -180,8 +180,6 @@ local function safeUtf8(str)
         return (string.gsub(str, "[\128-\255]", "_"))
     end
 end
-
-
 
 -- ==============================
 -- Helper Functions for Binary Reading
@@ -385,7 +383,7 @@ local function importFromPsd(filename, trimImageAlpha)
         file:close()
         return false, string.format(
             "Unsupported color mode: %s (%d).",
-            colorModeIntToString(psdColorMode), psdColorMode)
+            psdColorModeToString(psdColorMode), psdColorMode)
     end
 
     if channels ~= 3
@@ -479,7 +477,7 @@ local function importFromPsd(filename, trimImageAlpha)
         end
 
         -- Skip blending ranges (always 0 in our export)
-        local blendingRangesLength <const> =strunpack(">I4", file:read(4))
+        local blendingRangesLength <const> = strunpack(">I4", file:read(4))
         if blendingRangesLength > 0 then
             _ = file:read(blendingRangesLength)
         end
@@ -498,11 +496,12 @@ local function importFromPsd(filename, trimImageAlpha)
         local processed <const> = curPos - extraStart
         local remaining = extraLength - processed
 
-        while remaining >= 12 do                                 -- Continue if header is larger than 12 bytes
-            local addSig <const> = file:read(4) --[[@as string]] -- "8BIM"
-            local addKey <const> = file:read(4) --[[@as string]] -- "luni" / "lsct" etc.
-            local addLen <const> = strunpack(">I4", file:read(4))           -- payload length
-            local padded <const> = addLen + (addLen % 2)         -- 2-byte even padding
+        -- Continue if header is larger than 12 bytes
+        while remaining >= 12 do
+            local addSig <const> = file:read(4) --[[@as string]]
+            local addKey <const> = file:read(4) --[[@as string]]
+            local addLen <const> = strunpack(">I4", file:read(4))
+            local padded <const> = addLen + (addLen % 2)
             remaining = remaining - (12 + padded)
 
             if addSig ~= "8BIM" then -- Unexpected signature
@@ -513,14 +512,14 @@ local function importFromPsd(filename, trimImageAlpha)
                 break
             end
 
-            if addKey == "lsct" and addLen >= 4 then  -- ★ Folder information found
+            if addKey == "lsct" and addLen >= 4 then                 -- ★ Folder information found
                 layerInfo.groupType = strunpack(">I4", file:read(4)) -- 0/1/2=opener, 3=closer
                 layerInfo.isGroup = true
-                if padded > 4 then                    -- Skip remaining
+                if padded > 4 then                                   -- Skip remaining
                     _ = file:read(padded - 4)
                 end
-            elseif addKey == "luni" and addLen >= 4 then -- ★ Unicode layer name found
-                local count <const> = strunpack(">I4", file:read(4))(file)    -- UTF-16 code unit count
+            elseif addKey == "luni" and addLen >= 4 then                   -- ★ Unicode layer name found
+                local count <const> = strunpack(">I4", file:read(4))(file) -- UTF-16 code unit count
                 local bytesToRead <const> = count * 2
                 if bytesToRead > 0 and bytesToRead <= addLen - 4 then
                     local utf16 <const> = file:read(bytesToRead) --[[@as string]] -- Read UTF-16BE data
@@ -627,7 +626,7 @@ local function importFromPsd(filename, trimImageAlpha)
         app.command.SwitchColors()
     end
 
-    local aseColorMode <const> = colorModeIntToAseprite(psdColorMode)
+    local aseColorMode <const> = psdColorModeToAseprite(psdColorMode)
     local aseAlphaIndex <const> = 0
     local aseColorSpace <const> = ColorSpace { sRGB = true }
 
@@ -673,6 +672,9 @@ local function importFromPsd(filename, trimImageAlpha)
             ----------------------------------------------------------
             if layerInfo.groupType == 0 or layerInfo.groupType == 1
                 or layerInfo.groupType == 2 then
+                -- TODO: Do PSD groups support blend modes or opacity?
+                -- If so, then these should be transferred to Aseprite group.
+
                 local grp <const> = sprite:newGroup()
                 grp.name = safeUtf8(layerInfo.name)
                 grp.isVisible = layerInfo.visible
