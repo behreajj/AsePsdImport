@@ -693,7 +693,7 @@ local function importFromPsd(filename, trimImageAlpha)
             -- If no alpha channel, create opaque alpha data
             local expectedSize <const> = wLayer * hLayer
             local opaque <const> = strrep(strchar(255), expectedSize)
-            if not aData or #aData == 0 then
+            if not aData or lenAData == 0 then
                 aData = opaque
             end
 
