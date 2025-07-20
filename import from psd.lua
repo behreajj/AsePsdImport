@@ -373,12 +373,6 @@ local function importFromPsd(filename, trimImageAlpha)
         end
     end
 
-    -- Check color mode
-    -- bitmap = 0
-    -- grayscale = 1
-    -- indexed = 2
-    -- RGB = 3
-    -- Lab = 9
     if psdColorMode ~= 3 then
         file:close()
         return false, string.format(
@@ -519,7 +513,7 @@ local function importFromPsd(filename, trimImageAlpha)
                     _ = file:read(padded - 4)
                 end
             elseif addKey == "luni" and addLen >= 4 then                   -- ★ Unicode layer name found
-                local count <const> = strunpack(">I4", file:read(4))(file) -- UTF-16 code unit count
+                local count <const> = strunpack(">I4", file:read(4)) -- UTF-16 code unit count
                 local bytesToRead <const> = count * 2
                 if bytesToRead > 0 and bytesToRead <= addLen - 4 then
                     local utf16 <const> = file:read(bytesToRead) --[[@as string]] -- Read UTF-16BE data
