@@ -570,10 +570,7 @@ local function importFromPsd(filename)
     spriteSpec.colorSpace = aseColorSpace
     local sprite <const> = Sprite(spriteSpec)
     sprite.filename = app.fs.fileName(filename)
-    -- TODO: Do not do this, a sprite with zero layers will throw an error.
-    -- Maybe wait until after all layers are created, then check if #sprite.layers > 1
-    -- before deleting.
-    sprite:deleteLayer(sprite.layers[1]) -- Remove default layer
+    local defaultLayer <const> = sprite.layers[1]
 
     -- Process layers in reverse order to match PSD layer stack (Top→Bottom becomes Bottom→Top)
     local groupStack = {} ---@type Layer[]
@@ -697,9 +694,11 @@ local function importFromPsd(filename)
 
         ::nextRecord::
         -- ↓ continue for-loop
+    end -- End loop.
+
+    if #sprite.layers > 1 then
+        sprite:deleteLayer(defaultLayer) -- Remove default layer
     end
-
-
 
     return true, nil
 end
@@ -749,7 +748,7 @@ local function showImportDialog()
                         algorithm = 1,
                         maxColors = 256,
                         ui = false,
-                        withAlpha = false,
+                        withAlpha = true,
                     }
                 else
                     app.alert({
