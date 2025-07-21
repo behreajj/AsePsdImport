@@ -4,6 +4,28 @@
 -- Supports both RGB (3 channels) and RGBA (4 channels) PSD files
 -- Fully supports PSD group/folder structures with proper Layer.isGroup mapping
 
+local blendModeMap <const> = {
+    ["norm"] = BlendMode.NORMAL,
+    ["mul "] = BlendMode.MULTIPLY,
+    ["scrn"] = BlendMode.SCREEN,
+    ["over"] = BlendMode.OVERLAY,
+    ["dark"] = BlendMode.DARKEN,
+    ["lite"] = BlendMode.LIGHTEN,
+    ["div "] = BlendMode.COLOR_DODGE,
+    ["idiv"] = BlendMode.COLOR_BURN,
+    ["hLit"] = BlendMode.HARD_LIGHT,
+    ["sLit"] = BlendMode.SOFT_LIGHT,
+    ["diff"] = BlendMode.DIFFERENCE,
+    ["smud"] = BlendMode.EXCLUSION,
+    ["hue "] = BlendMode.HSL_HUE,
+    ["sat "] = BlendMode.HSL_SATURATION,
+    ["colr"] = BlendMode.HSL_COLOR,
+    ["lum "] = BlendMode.HSL_LUMINOSITY,
+    ["lddg"] = BlendMode.ADDITION,
+    ["fsub"] = BlendMode.SUBTRACT,
+    ["fdiv"] = BlendMode.DIVIDE,
+}
+
 ---@param i integer
 ---@return string
 local function psdColorModeToString(i)
@@ -181,10 +203,6 @@ local function safeUtf8(str)
     end
 end
 
--- ==============================
--- Helper Functions for Binary Reading
--- ==============================
-
 ---Read Pascal string (length-prefixed, padded to 4-byte boundary)
 ---@param file file*
 ---@return string
@@ -252,32 +270,6 @@ local function unpackBits(data)
 end
 
 -- ==============================
--- Blend Mode Mapping
--- ==============================
-
-local blendModeMap <const> = {
-    ["norm"] = BlendMode.NORMAL,
-    ["mul "] = BlendMode.MULTIPLY,
-    ["scrn"] = BlendMode.SCREEN,
-    ["over"] = BlendMode.OVERLAY,
-    ["dark"] = BlendMode.DARKEN,
-    ["lite"] = BlendMode.LIGHTEN,
-    ["div "] = BlendMode.COLOR_DODGE,
-    ["idiv"] = BlendMode.COLOR_BURN,
-    ["hLit"] = BlendMode.HARD_LIGHT,
-    ["sLit"] = BlendMode.SOFT_LIGHT,
-    ["diff"] = BlendMode.DIFFERENCE,
-    ["smud"] = BlendMode.EXCLUSION,
-    ["hue "] = BlendMode.HSL_HUE,
-    ["sat "] = BlendMode.HSL_SATURATION,
-    ["colr"] = BlendMode.HSL_COLOR,
-    ["lum "] = BlendMode.HSL_LUMINOSITY,
-    ["lddg"] = BlendMode.ADDITION,
-    ["fsub"] = BlendMode.SUBTRACT,
-    ["fdiv"] = BlendMode.DIVIDE,
-}
-
--- ==============================
 -- Layer Data Structures
 -- ==============================
 
@@ -315,10 +307,9 @@ local function importFromPsd(filename, trimImageAlpha)
     local strrepeat <const> = string.rep
     local strsub <const> = string.sub
     local strunpack <const> = string.unpack
-
+    local tconcat <const> = table.concat
     local tinsert <const> = table.insert
     local tremove <const> = table.remove
-
     local rgbaCompose <const> = app.pixelColor.rgba
 
     -- ==============================
@@ -346,11 +337,24 @@ local function importFromPsd(filename, trimImageAlpha)
     _ = file:read(6)
 
     local channels <const> = strunpack(">I2", file:read(2))
-    -- local hasAlpha <const> = (channels == 4)
+    -- print(string.format("channels: %d (0x%04X)",
+    --     channels, channels))
+
     local hSprite <const> = strunpack(">I4", file:read(4))
+    -- print(string.format("hSprite: %d (0x%08X)",
+    --     hSprite, hSprite))
+
     local wSprite <const> = strunpack(">I4", file:read(4))
+    -- print(string.format("wSprite: %d (0x%08X)",
+    --     wSprite, wSprite))
+
     local bitDepth <const> = strunpack(">I2", file:read(2))
+    -- print(string.format("bitDepth: %d (0x%04X)",
+    --     bitDepth, bitDepth))
+
     local psdColorMode <const> = strunpack(">I2", file:read(2))
+    -- print(string.format("psdColorMode: %d (0x%04X)",
+    --     psdColorMode, psdColorMode))
 
     -- ==============================
     -- Color Mode Data Section
@@ -359,17 +363,20 @@ local function importFromPsd(filename, trimImageAlpha)
     ---@type Color[]
     local colorTable <const> = {}
     local colorModeDataLength <const> = strunpack(">I4", file:read(4))
+    -- print(string.format("colorModeDataLength: %d (0x%08X)",
+    --     colorModeDataLength, colorModeDataLength))
+
     if colorModeDataLength > 0 then
         local colorTableData <const> = file:read(colorModeDataLength) --[[@as string]]
         local swatchLength <const> = colorModeDataLength // 3
         local i = 0
         while i < swatchLength do
-            local r <const> = strbyte(colorTableData, 1 + i)
-            local g <const> = strbyte(colorTableData, 1 + swatchLength + i)
-            local b <const> = strbyte(colorTableData, 1 + swatchLength * 2 + i)
-            colorTable[1 + i] = Color { r = r, g = g, b = b, a = 255 }
-            -- print(string.format("i: %d, r: %d, g: %d, b: %d", i, r, g, b))
             i = i + 1
+            local r <const> = strbyte(colorTableData, i)
+            local g <const> = strbyte(colorTableData, swatchLength + i)
+            local b <const> = strbyte(colorTableData, swatchLength * 2 + i)
+            -- print(string.format("i: %d, r: %d, g: %d, b: %d", i, r, g, b))
+            colorTable[i] = Color { r = r, g = g, b = b, a = 255 }
         end
     end
 
@@ -403,53 +410,89 @@ local function importFromPsd(filename, trimImageAlpha)
     if imageResourcesLength > 0 then
         _ = file:read(imageResourcesLength)
     end
+    -- print(string.format("imageResourcesLength: %d (0x%08X)",
+    --     imageResourcesLength, imageResourcesLength))
 
     -- ==============================
     -- Layer and Mask Information Section
     -- ==============================
 
     local layerAndMaskLength <const> = strunpack(">I4", file:read(4))
-    local layerAndMaskEnd <const> = file:seek("cur") + layerAndMaskLength
+    -- print(string.format("layerAndMaskLength: %d (0x%08X)",
+    --     layerAndMaskLength, layerAndMaskLength))
+
+    local layerAndMaskEnd <const> = file:seek("cur")
+        + layerAndMaskLength
+    -- print(string.format("layerAndMaskEnd: %d (calculated)",
+    --     layerAndMaskEnd))
 
     local layerInfoLength <const> = strunpack(">I4", file:read(4))
+    -- print(string.format("layerInfoLength: %d (0x%08X)",
+    --     layerInfoLength, layerInfoLength))
+
     local layerCount <const> = math.abs(strunpack(">i2", file:read(2)))
+    -- print(string.format("layerCount: %d (0x%04X)",
+    --     layerCount, layerCount))
 
     ---@type table[]
     local layers <const> = {}
 
     ---TODO: Replace with while loop.
     for i = 1, layerCount do
-        local layerInfo <const> = {}
+        -- print(string.format("i: %d", i))
 
-        -- Read bounds
-        layerInfo.bounds = {
-            top = strunpack(">i4", file:read(4)),
-            left = strunpack(">i4", file:read(4)),
-            bottom = strunpack(">i4", file:read(4)),
-            right = strunpack(">i4", file:read(4)),
-        }
+        local top <const> = strunpack(">i4", file:read(4))
+        -- print(string.format("top: %d (0x%08X)", top, top))
 
-        -- Read channel count and channel info
+        local left <const> = strunpack(">i4", file:read(4))
+        -- print(string.format("left: %d (0x%08X)", left, left))
+
+        local bottom <const> = strunpack(">i4", file:read(4))
+        -- print(string.format("bottom: %d (0x%08X)", bottom, bottom))
+
+        local right <const> = strunpack(">i4", file:read(4))
+        -- print(string.format("right: %d (0x%08X)", right, right))
+
         local channelCount <const> = strunpack(">I2", file:read(2))
-        layerInfo.channels = {}
+        -- print(string.format("channelCount: %d (0x%04X)",
+        --     channelCount, channelCount))
 
-        for j = 1, channelCount do
+        ---@type {id: integer, size: integer}[]
+        local channelData <const> = {}
+        local j = 0
+        while j < channelCount do
+            j = j + 1
             local channelId <const> = strunpack(">i2", file:read(2))
             local channelSize <const> = strunpack(">I4", file:read(4))
-            layerInfo.channels[j] = { id = channelId, size = channelSize }
+            channelData[j] = { id = channelId, size = channelSize }
         end
 
-        -- Read blend mode signature
         local blendSig <const> = file:read(4) --[[@as string]]
+        -- print(string.format("blendSig: \"%s\" (0x%08X)",
+        --     blendSig, string.unpack("<I4", blendSig)))
+
+        local blendMode <const> = file:read(4)
+        local opacity <const> = strbyte(file:read(1))
+
+        local layerInfo <const> = {
+            blendMode = blendMode,
+            bounds = {
+                bottom = bottom,
+                left = left,
+                right = right,
+                top = top,
+            },
+            channels = channelData,
+            opacity = opacity,
+        }
+
+        -- Read blend mode signature
         if blendSig ~= "8BIM" then
             file:close()
             return false, string.format(
                 "Invalid blend mode signature in layer %d.",
                 i)
         end
-
-        layerInfo.blendMode = file:read(4)
-        layerInfo.opacity = strbyte(file:read(1))
 
         -- Read clipping (skip)
         _ = strbyte(file:read(1))
@@ -512,7 +555,7 @@ local function importFromPsd(filename, trimImageAlpha)
                 if padded > 4 then                                   -- Skip remaining
                     _ = file:read(padded - 4)
                 end
-            elseif addKey == "luni" and addLen >= 4 then                   -- ★ Unicode layer name found
+            elseif addKey == "luni" and addLen >= 4 then             -- ★ Unicode layer name found
                 local count <const> = strunpack(">I4", file:read(4)) -- UTF-16 code unit count
                 local bytesToRead <const> = count * 2
                 if bytesToRead > 0 and bytesToRead <= addLen - 4 then
@@ -719,15 +762,6 @@ local function importFromPsd(filename, trimImageAlpha)
         if wLayer > 0
             and hLayer > 0
             and #layerInfo.channelData >= 4 then
-            local imageSpec <const> = ImageSpec {
-                width = wLayer,
-                height = hLayer,
-                colorMode = aseColorMode,
-                transparentColor = aseAlphaIndex,
-            }
-            imageSpec.colorSpace = aseColorSpace
-            local image <const> = Image(imageSpec)
-
             -- Decode channel data
             local rData <const> = layerInfo.channelData[1] or ""
             local gData <const> = layerInfo.channelData[2] or ""
@@ -740,39 +774,42 @@ local function importFromPsd(filename, trimImageAlpha)
             local lenAData <const> = #aData
 
             -- If no alpha channel, create opaque alpha data
-            local expectedSize <const> = wLayer * hLayer
-            local opaque <const> = strrepeat(strchar(255), expectedSize)
+            local areaLayer <const> = wLayer * hLayer
+            local opaque <const> = strrepeat(strchar(255), areaLayer)
             if not aData or lenAData == 0 then
                 aData = opaque
             end
 
-            for y = 0, hLayer - 1 do
-                for x = 0, wLayer - 1 do
-                    local pixelIndex <const> = y * wLayer + x + 1
+            local imageSpec <const> = ImageSpec {
+                width = wLayer,
+                height = hLayer,
+                colorMode = aseColorMode,
+                transparentColor = aseAlphaIndex,
+            }
+            imageSpec.colorSpace = aseColorSpace
+            local image <const> = Image(imageSpec)
 
-                    local r = 0
-                    local g = 0
-                    local b = 0
-                    local a = 255
+            ---@type string[]
+            local aseBytes <const> = {}
+            local j = 0
+            while j < areaLayer do
+                -- local x <const> = j % wLayer
+                -- local y <const> = j // wLayer
 
-                    if pixelIndex <= lenRData then
-                        r = strbyte(rData, pixelIndex)
-                    end
-                    if pixelIndex <= lenGData then
-                        g = strbyte(gData, pixelIndex)
-                    end
-                    if pixelIndex <= lenBData then
-                        b = strbyte(bData, pixelIndex)
-                    end
-                    if pixelIndex <= lenAData then
-                        a = strbyte(aData, pixelIndex)
-                    end
+                local r <const> = j < lenRData and strbyte(rData, 1 + j) or 0
+                local g <const> = j < lenGData and strbyte(gData, 1 + j) or 0
+                local b <const> = j < lenBData and strbyte(bData, 1 + j) or 0
+                local a <const> = j < lenAData and strbyte(aData, 1 + j) or 255
 
-                    -- TODO: This entire loop could be more efficient.
-                    local abgr32 <const> = rgbaCompose(r, g, b, a)
-                    image:drawPixel(x, y, abgr32)
-                end -- Pixel loop x
-            end     -- Pixel loop y
+                local j4 <const> = j * 4
+                aseBytes[1 + j4] = strchar(r)
+                aseBytes[2 + j4] = strchar(g)
+                aseBytes[3 + j4] = strchar(b)
+                aseBytes[4 + j4] = strchar(a)
+
+                j = j + 1
+            end
+            image.bytes = tconcat(aseBytes)
 
             local layerBounds <const> = layerInfo.bounds
             local xPos = layerBounds.left
