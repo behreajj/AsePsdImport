@@ -4,7 +4,7 @@
 -- Supports both RGB (3 channels) and RGBA (4 channels) PSD files
 -- Fully supports PSD group/folder structures with proper Layer.isGroup mapping
 
-local blendModeMap <const> = {
+local psdToAseBlendModeMap <const> = {
     ["norm"] = BlendMode.NORMAL,
     ["mul "] = BlendMode.MULTIPLY,
     ["scrn"] = BlendMode.SCREEN,
@@ -623,10 +623,6 @@ local function importFromPsd(filename, trimImageAlpha)
             channelDataByID[channelInfo.id] = decodedData
         end
 
-        -- TODO: If these are non-interleaved (rrrrr.... ggggg... bbbbb...)
-        -- Would this be a good place to interleave them, so that irregular
-        -- array lengths don't need to be checked later?
-
         -- Store in standard order: R, G, B, A
         layer.channelData[1] = channelDataByID[0] or ""
         layer.channelData[2] = channelDataByID[1] or ""
@@ -692,7 +688,8 @@ local function importFromPsd(filename, trimImageAlpha)
 
     local defaultLayer <const> = sprite.layers[1]
 
-    -- Process layers in reverse order to match PSD layer stack (Top→Bottom becomes Bottom→Top)
+    -- Process layers in reverse order to match PSD layer stack
+    -- (Top to Bottom becomes Bottom to Top)
     local groupStack = {} ---@type Layer[]
 
     -- TODO: Use while loop.
@@ -728,7 +725,7 @@ local function importFromPsd(filename, trimImageAlpha)
                 goto nextRecord -- Must end here to prevent double creation
                 --------------------------------------------------------
                 ----------------------------------------------------------
-                -- B. Closer: type 3  →  Close folder and continue (no layer)
+                -- B. Closer: type 3    Close folder and continue (no layer)
                 ----------------------------------------------------------
             elseif layerInfo.groupType == 3 then
                 if #groupStack > 0 then
@@ -746,8 +743,8 @@ local function importFromPsd(filename, trimImageAlpha)
         lay.isVisible = layerInfo.visible
         lay.opacity = layerInfo.opacity
 
-        if blendModeMap[layerInfo.blendMode] then
-            lay.blendMode = blendModeMap[layerInfo.blendMode]
+        if psdToAseBlendModeMap[layerInfo.blendMode] then
+            lay.blendMode = psdToAseBlendModeMap[layerInfo.blendMode]
         end
 
         if #groupStack > 0 then
