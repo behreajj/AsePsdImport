@@ -661,7 +661,7 @@ local function importFromPsd(filename, trimImageAlpha)
 
     local aseColorMode <const> = psdColorModeToAseprite(psdColorMode)
     local aseAlphaIndex <const> = 0
-    local aseColorSpace <const> = ColorSpace { sRGB = true }
+    local aseColorSpace <const> = ColorSpace { sRGB = false }
 
     local spriteSpec <const> = ImageSpec {
         width = wSprite,
@@ -695,166 +695,147 @@ local function importFromPsd(filename, trimImageAlpha)
     -- TODO: Use while loop.
     for i = layerCount, 1, -1 do
         local layerInfo <const> = layers[i]
+        local groupType <const> = layerInfo.groupType
 
-        ------------------------------------------------------------
-        -- (1) Overall structure for layer/group creation
-        ------------------------------------------------------------
-        -- TODO: Is this redundant info? isGroup is the same as groupType == 0|1|2
-        if layerInfo.isGroup then
-            ----------------------------------------------------------
-            -- A. Opener: type 0·1·2  →  Create folder and continue
-            ----------------------------------------------------------
-            if layerInfo.groupType == 0 or layerInfo.groupType == 1
-                or layerInfo.groupType == 2 then
-                -- TODO: Do PSD groups support blend modes or opacity?
-                -- If so, then these should be transferred to Aseprite group.
+        if groupType == 0
+            or groupType == 1
+            or groupType == 2 then
+            -- TODO: Do PSD groups support blend modes or opacity?
+            -- If so, then these should be transferred to Aseprite group.
 
-                local grp <const> = sprite:newGroup()
-                grp.name = safeUtf8(layerInfo.name)
-                grp.isVisible = layerInfo.visible
-                grp.isExpanded = (layerInfo.groupType ~= 2)
+            local grp <const> = sprite:newGroup()
+            grp.name = safeUtf8(layerInfo.name)
+            grp.isVisible = layerInfo.visible
+            grp.isExpanded = (layerInfo.groupType ~= 2)
 
-                -- Assign parent folder
-                if #groupStack > 0 then
-                    grp.parent = groupStack[#groupStack]
-                end
-                grp.stackIndex = 1       -- Move to bottom
-                tinsert(groupStack, grp) -- push
+            -- Assign parent folder
+            if #groupStack > 0 then
+                grp.parent = groupStack[#groupStack]
+            end
+            grp.stackIndex = 1       -- Move to bottom
+            tinsert(groupStack, grp) -- push
+        elseif groupType == 3 then
+            -- Close group
+            if #groupStack > 0 then
+                tremove(groupStack)
+            end
+        else
+            local lay <const> = sprite:newLayer()
+            lay.name = safeUtf8(layerInfo.name)
+            lay.isVisible = layerInfo.visible
+            lay.opacity = layerInfo.opacity
 
-                ------------------------- Important -------------------------
-                goto nextRecord -- Must end here to prevent double creation
-                --------------------------------------------------------
-                ----------------------------------------------------------
-                -- B. Closer: type 3    Close folder and continue (no layer)
-                ----------------------------------------------------------
-            elseif layerInfo.groupType == 3 then
-                if #groupStack > 0 then
-                    tremove(groupStack)
-                end
-                goto nextRecord
-            end -- End layer type code.
-        end     -- End layer is group.
-
-        ------------------------------------------------------------
-        -- (2) Regular layer processing (isGroup == false) ---------
-        ------------------------------------------------------------
-        local lay <const> = sprite:newLayer()
-        lay.name = safeUtf8(layerInfo.name)
-        lay.isVisible = layerInfo.visible
-        lay.opacity = layerInfo.opacity
-
-        if psdToAseBlendModeMap[layerInfo.blendMode] then
-            lay.blendMode = psdToAseBlendModeMap[layerInfo.blendMode]
-        end
-
-        if #groupStack > 0 then
-            lay.parent = groupStack[#groupStack]
-        end
-        lay.stackIndex = 1
-
-        -- Create image if layer has content
-        local wLayer <const> = layerInfo.bounds.right - layerInfo.bounds.left
-        local hLayer <const> = layerInfo.bounds.bottom - layerInfo.bounds.top
-
-        if wLayer > 0
-            and hLayer > 0
-            and #layerInfo.channelData >= 4 then
-            -- Decode channel data
-            local rData <const> = layerInfo.channelData[1] or ""
-            local gData <const> = layerInfo.channelData[2] or ""
-            local bData <const> = layerInfo.channelData[3] or ""
-            local aData = layerInfo.channelData[4] -- may be nil
-
-            local lenRData <const> = #rData
-            local lenGData <const> = #gData
-            local lenBData <const> = #bData
-            local lenAData <const> = #aData
-
-            -- If no alpha channel, create opaque alpha data
-            local areaLayer <const> = wLayer * hLayer
-            local opaque <const> = strrepeat(strchar(255), areaLayer)
-            if not aData or lenAData == 0 then
-                aData = opaque
+            if psdToAseBlendModeMap[layerInfo.blendMode] then
+                lay.blendMode = psdToAseBlendModeMap[layerInfo.blendMode]
             end
 
-            local imageSpec <const> = ImageSpec {
-                width = wLayer,
-                height = hLayer,
-                colorMode = aseColorMode,
-                transparentColor = aseAlphaIndex,
-            }
-            imageSpec.colorSpace = aseColorSpace
-            local image <const> = Image(imageSpec)
-
-            ---@type string[]
-            local aseBytes <const> = {}
-            local j = 0
-            while j < areaLayer do
-                -- local x <const> = j % wLayer
-                -- local y <const> = j // wLayer
-
-                local r <const> = j < lenRData and strbyte(rData, 1 + j) or 0
-                local g <const> = j < lenGData and strbyte(gData, 1 + j) or 0
-                local b <const> = j < lenBData and strbyte(bData, 1 + j) or 0
-                local a <const> = j < lenAData and strbyte(aData, 1 + j) or 255
-
-                local j4 <const> = j * 4
-                aseBytes[1 + j4] = strchar(r)
-                aseBytes[2 + j4] = strchar(g)
-                aseBytes[3 + j4] = strchar(b)
-                aseBytes[4 + j4] = strchar(a)
-
-                j = j + 1
+            if #groupStack > 0 then
+                lay.parent = groupStack[#groupStack]
             end
-            image.bytes = tconcat(aseBytes)
+            lay.stackIndex = 1
 
+            -- Create image if layer has content
             local layerBounds <const> = layerInfo.bounds
-            local xPos = layerBounds.left
-            local yPos = layerBounds.top
-            local trimmedImage = image
+            local wLayer <const> = layerBounds.right - layerBounds.left
+            local hLayer <const> = layerBounds.bottom - layerBounds.top
 
-            if trimImageAlpha then
-                local trimRect <const> = trimmedImage:shrinkBounds(aseAlphaIndex)
-                local wTrimRect <const> = trimRect.width
-                local hTrimRect <const> = trimRect.height
+            if wLayer > 0
+                and hLayer > 0
+                and #layerInfo.channelData >= 4 then
+                -- Decode channel data
+                local rData <const> = layerInfo.channelData[1] or ""
+                local gData <const> = layerInfo.channelData[2] or ""
+                local bData <const> = layerInfo.channelData[3] or ""
+                local aData = layerInfo.channelData[4] -- may be nil
 
-                local rectIsValid <const> = wTrimRect > 0
-                    and hTrimRect > 0
-                if rectIsValid then
-                    local xtlTrim <const> = trimRect.x
-                    local ytlTrim <const> = trimRect.y
+                local lenRData <const> = #rData
+                local lenGData <const> = #gData
+                local lenBData <const> = #bData
+                local lenAData <const> = #aData
 
-                    local trimmedSpec <const> = ImageSpec {
-                        width = wTrimRect,
-                        height = hTrimRect,
-                        colorMode = aseColorMode,
-                        transparentColor = aseAlphaIndex,
-                    }
-                    imageSpec.colorSpace = aseColorSpace
+                -- If no alpha channel, create opaque alpha data
+                local areaLayer <const> = wLayer * hLayer
+                local opaque <const> = strrepeat(strchar(255), areaLayer)
+                if not aData or lenAData == 0 then
+                    aData = opaque
+                end
 
-                    trimmedImage = Image(trimmedSpec)
-                    trimmedImage:drawImage(
-                        image,
-                        Point(-xtlTrim, -ytlTrim),
-                        255,
-                        BlendMode.SRC)
+                local imageSpec <const> = ImageSpec {
+                    width = wLayer,
+                    height = hLayer,
+                    colorMode = aseColorMode,
+                    transparentColor = aseAlphaIndex,
+                }
+                imageSpec.colorSpace = aseColorSpace
+                local image <const> = Image(imageSpec)
 
-                    xPos = xPos + xtlTrim
-                    yPos = yPos + ytlTrim
-                end -- End trim rectangle is valid.
-            end     -- End use image trimming.
+                ---@type string[]
+                local aseBytes <const> = {}
+                local j = 0
+                while j < areaLayer do
+                    -- local x <const> = j % wLayer
+                    -- local y <const> = j // wLayer
 
-            local cel <const> = sprite:newCel(
-                lay,
-                1,
-                trimmedImage,
-                Point(xPos, yPos))
-        end
+                    local r <const> = j < lenRData and strbyte(rData, 1 + j) or 0
+                    local g <const> = j < lenGData and strbyte(gData, 1 + j) or 0
+                    local b <const> = j < lenBData and strbyte(bData, 1 + j) or 0
+                    local a <const> = j < lenAData and strbyte(aData, 1 + j) or 255
 
-        -- TODO: Remove goto statements.
-        ::nextRecord::
-        -- ↓ continue for-loop
-    end -- End loop.
+                    local j4 <const> = j * 4
+                    aseBytes[1 + j4] = strchar(r)
+                    aseBytes[2 + j4] = strchar(g)
+                    aseBytes[3 + j4] = strchar(b)
+                    aseBytes[4 + j4] = strchar(a)
+
+                    j = j + 1
+                end
+                image.bytes = tconcat(aseBytes)
+
+                -- TODO: Unpack the xPos, yPos variables earlier, when
+                -- calculating the width and height of the layer?
+                local xPos = layerBounds.left
+                local yPos = layerBounds.top
+                local trimmedImage = image
+
+                if trimImageAlpha then
+                    local trimRect <const> = image:shrinkBounds(aseAlphaIndex)
+                    local wTrimRect <const> = trimRect.width
+                    local hTrimRect <const> = trimRect.height
+
+                    local rectIsValid <const> = wTrimRect > 0
+                        and hTrimRect > 0
+                    if rectIsValid then
+                        local xtlTrim <const> = trimRect.x
+                        local ytlTrim <const> = trimRect.y
+
+                        local trimmedSpec <const> = ImageSpec {
+                            width = wTrimRect,
+                            height = hTrimRect,
+                            colorMode = aseColorMode,
+                            transparentColor = aseAlphaIndex,
+                        }
+                        imageSpec.colorSpace = aseColorSpace
+
+                        trimmedImage = Image(trimmedSpec)
+                        trimmedImage:drawImage(
+                            image,
+                            Point(-xtlTrim, -ytlTrim),
+                            255,
+                            BlendMode.SRC)
+
+                        xPos = xPos + xtlTrim
+                        yPos = yPos + ytlTrim
+                    end -- End trim rectangle is valid.
+                end     -- End use image trimming.
+
+                local cel <const> = sprite:newCel(
+                    lay,
+                    1,
+                    trimmedImage,
+                    Point(xPos, yPos))
+            end
+        end -- End layer type block.
+    end     -- End loop.
 
     if lenAseColors <= 0 then
         app.command.ColorQuantization {
