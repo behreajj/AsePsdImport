@@ -695,18 +695,27 @@ local function importFromPsd(filename, trimImageAlpha)
     -- TODO: Use while loop.
     for i = layerCount, 1, -1 do
         local layerInfo <const> = layers[i]
+
         local groupType <const> = layerInfo.groupType
+        local psdLayerName <const> = layerInfo.name
+        local psdBlendMode <const> = layerInfo.blendMode
+        local layerIsVisible <const> = layerInfo.visible
+        local layerOpacity <const> = layerInfo.opacity
+
+        local aseLayerName <const> = safeUtf8(psdLayerName)
+        local aseBlendMode <const> = psdToAseBlendModeMap[psdBlendMode]
+            or BlendMode.NORMAL
 
         if groupType == 0
             or groupType == 1
             or groupType == 2 then
-            -- TODO: Do PSD groups support blend modes or opacity?
-            -- If so, then these should be transferred to Aseprite group.
-
             local grp <const> = sprite:newGroup()
-            grp.name = safeUtf8(layerInfo.name)
-            grp.isVisible = layerInfo.visible
-            grp.isExpanded = (layerInfo.groupType ~= 2)
+
+            grp.name = aseLayerName
+            grp.blendMode = aseBlendMode
+            grp.opacity = layerOpacity
+            grp.isVisible = layerIsVisible
+            grp.isExpanded = groupType ~= 2
 
             -- Assign parent folder
             if #groupStack > 0 then
@@ -721,13 +730,10 @@ local function importFromPsd(filename, trimImageAlpha)
             end
         else
             local lay <const> = sprite:newLayer()
-            lay.name = safeUtf8(layerInfo.name)
-            lay.isVisible = layerInfo.visible
-            lay.opacity = layerInfo.opacity
-
-            if psdToAseBlendModeMap[layerInfo.blendMode] then
-                lay.blendMode = psdToAseBlendModeMap[layerInfo.blendMode]
-            end
+            lay.name = aseLayerName
+            lay.blendMode = aseBlendMode
+            lay.opacity = layerOpacity
+            lay.isVisible = layerIsVisible
 
             if #groupStack > 0 then
                 lay.parent = groupStack[#groupStack]
@@ -791,8 +797,6 @@ local function importFromPsd(filename, trimImageAlpha)
                 end
                 image.bytes = tconcat(aseBytes)
 
-                -- TODO: Unpack the xPos, yPos variables earlier, when
-                -- calculating the width and height of the layer?
                 local xPos = layerBounds.left
                 local yPos = layerBounds.top
                 local trimmedImage = image
