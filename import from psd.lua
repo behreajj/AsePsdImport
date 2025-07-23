@@ -745,14 +745,15 @@ local function importFromPsd(filename, trimImageAlpha)
             local wLayer <const> = layerBounds.right - layerBounds.left
             local hLayer <const> = layerBounds.bottom - layerBounds.top
 
+            local channelData <const> = layerInfo.channelData
             if wLayer > 0
                 and hLayer > 0
-                and #layerInfo.channelData >= 4 then
+                and #channelData >= 4 then
                 -- Decode channel data
-                local rData <const> = layerInfo.channelData[1] or ""
-                local gData <const> = layerInfo.channelData[2] or ""
-                local bData <const> = layerInfo.channelData[3] or ""
-                local aData = layerInfo.channelData[4] -- may be nil
+                local rData <const> = channelData[1] or ""
+                local gData <const> = channelData[2] or ""
+                local bData <const> = channelData[3] or ""
+                local aData = channelData[4] -- may be nil
 
                 local lenRData <const> = #rData
                 local lenGData <const> = #gData
